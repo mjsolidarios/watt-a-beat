@@ -44,6 +44,10 @@ export function MapScene(props: SceneProps) {
         const roads = d.roads.filter((r) => intersects(r.bounds, view));
         return {
           ...d,
+          buildings: (d.buildings ?? [])
+            .filter((b) => intersects(b.bounds, view))
+            .map((b) => b.d)
+            .join(""),
           minor: roads
             .filter((r) => !r.major)
             .map((r) => r.d)
@@ -75,6 +79,7 @@ export function MapScene(props: SceneProps) {
         data-map-id={map.id}
         data-map-name={map.name}
         data-road-count={map.roadCount}
+        data-building-count={map.buildingCount ?? 0}
       >
         <defs>
           <filter id="soft">
@@ -140,6 +145,26 @@ export function MapScene(props: SceneProps) {
                 data-district={district.name}
                 data-power={active ? brightness.toFixed(3) : "0.000"}
               >
+                <path
+                  data-buildings="base"
+                  d={district.buildings}
+                  fill="#29332b"
+                  stroke="#435040"
+                  strokeWidth="0.35"
+                  fillRule="evenodd"
+                />
+                {active && (
+                  <path
+                    data-buildings="lit"
+                    d={district.buildings}
+                    fill={color}
+                    fillOpacity={brightness * 0.55}
+                    stroke={color}
+                    strokeOpacity={brightness * 0.9}
+                    strokeWidth="0.65"
+                    fillRule="evenodd"
+                  />
+                )}
                 <path
                   d={district.minor}
                   fill="none"

@@ -20,6 +20,7 @@ export type MapData = {
     name: string;
     point: number[];
     roads: { d: string; major: boolean; bounds: number[] }[];
+    buildings?: { d: string; bounds: number[] }[];
     lights: number[][];
   }[];
   land: string;
@@ -27,6 +28,7 @@ export type MapData = {
   rivers: { d: string; wide: boolean; bounds: number[] }[];
   water: { d: string; bounds: number[] }[];
   roadCount: number;
+  buildingCount?: number;
   source: string;
   retrieved: string;
 };

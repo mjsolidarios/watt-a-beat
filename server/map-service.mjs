@@ -8,6 +8,7 @@ import {
 import fs from "node:fs/promises";
 import path from "node:path";
 import { buildArea, geographicBounds } from "../src/map-geometry.mjs";
+import { buildingQuery } from "../src/buildings.mjs";
 
 const secret = randomBytes(32),
   memorySearch = new Map(),
@@ -77,7 +78,7 @@ export function filterPhilippineResults(data) {
     )
     .slice(0, 6);
 }
-async function readJsonResponse(response, limit = 20 * 1024 * 1024) {
+async function readJsonResponse(response, limit = 40 * 1024 * 1024) {
   if (!response.ok)
     throw new Error(
       response.status === 429
@@ -142,7 +143,7 @@ async function prune() {
 }
 async function loadArea(location, view, signal) {
   const id = createHash("sha256")
-    .update(JSON.stringify({ name: location.name, ...view }))
+    .update(JSON.stringify({ version: 2, name: location.name, ...view }))
     .digest("hex")
     .slice(0, 24);
   try {
@@ -159,7 +160,7 @@ async function loadArea(location, view, signal) {
       const bbox = [south, west, north, east]
         .map((v) => v.toFixed(6))
         .join(",");
-      const query = `[out:json][timeout:45][maxsize:67108864];(way[highway][highway!~"footway|steps|path|track|service"](${bbox});way[waterway~"river|stream"](${bbox});way[natural~"coastline|water"](${bbox});node[place~"suburb|quarter|neighbourhood|town|village|city"](${bbox}););out geom;`;
+      const query = `[out:json][timeout:45][maxsize:67108864];(way[highway][highway!~"footway|steps|path|track|service"](${bbox});${buildingQuery(bbox)}way[waterway~"river|stream"](${bbox});way[natural~"coastline|water"](${bbox});node[place~"suburb|quarter|neighbourhood|town|village|city"](${bbox}););out geom;`;
       const response = await fetch(
         process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter",
         {

@@ -1,3 +1,5 @@
+import { addBuildings } from "./buildings.mjs";
+
 export const VIEW_WIDTH = 1600,
   VIEW_HEIGHT = 900;
 export function geographicBounds({ lat, lon, widthKm }) {
@@ -282,7 +284,7 @@ export function buildArea(osm, location, view, knownZones = []) {
       d: svgPath(e.geometry.map(project)) + "Z",
       bounds: boundsOf(e.geometry.map(project)),
     }));
-  return {
+  return addBuildings(osm, {
     id: "",
     name: location.name,
     description: location.description ?? "",
@@ -297,5 +299,5 @@ export function buildArea(osm, location, view, knownZones = []) {
     roadCount,
     source: "© OpenStreetMap contributors, ODbL",
     retrieved: new Date().toISOString().slice(0, 10),
-  };
+  });
 }

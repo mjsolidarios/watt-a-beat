@@ -10,6 +10,7 @@ Built with React, Vite, Remotion, and OpenStreetMap data.
 
 - 🎵 **Audio-reactive lighting** — Bass, mids, and treble drive different districts in real time
 - 🌆 **Multiple atmospheres** — City lights, Christmas (with snow), Moonlight, and Rain (with rain streaks)
+- 🏘️ **Building footprints** — Mapped buildings light up with their district’s streets, using the chosen color and music response in both preview and MP4 exports
 - 🗺️ **Philippine map search** — Search cities, towns, and landmarks via Photon + OpenStreetMap
 - 🎥 **Video export** — Render your mix as an MP4 using Remotion (local rendering)
 - ✨ **Modern glassy UI** — Icon-only controls with tooltips, GSAP animations, smooth interactions
@@ -24,6 +25,11 @@ npm run dev
 ```
 
 Open http://localhost:3000.
+
+Development mode restarts the backend when its code changes, keeping export
+validation in sync with the preview. If a server was started before this update,
+restart it once with `npm run dev`. Production servers must be restarted after
+deploying updated code.
 
 An original ambient demo track is included. Drop your own MP3, WAV, or M4A (up to 60 MB / 5 min).
 
@@ -67,6 +73,10 @@ npm test
 ```
 
 Video exports are rendered locally using Remotion. Requires a Chromium-based browser.
+
+With the studio running, `npm run test:export-colors` renders two short MP4s and
+checks that their decoded frames contain the requested custom colors. Set
+`TEST_BASE_URL` to test a server on a different port.
 
 ## Credits & Data
 
