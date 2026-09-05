@@ -92,7 +92,13 @@ async function readJsonResponse(response, limit = 20 * 1024 * 1024) {
       throw new Error("This area is too detailed. Choose a smaller view.");
     chunks.push(chunk);
   }
-  return JSON.parse(Buffer.concat(chunks).toString());
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString());
+  } catch {
+    throw new Error(
+      "The map provider returned invalid data. Please retry this area.",
+    );
+  }
 }
 export async function getMapSnapshot(id) {
   if (id === "iloilo-default") {
