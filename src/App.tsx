@@ -93,6 +93,8 @@ export function App() {
     progress: number;
     error?: string;
   } | null>(null);
+  const cancelRequested = useRef(false);
+  const [exportError, setExportError] = useState("");
   const player = useRef<PlayerRef>(null),
     upload = useRef<HTMLInputElement>(null),
     audioBytes = useRef<Blob | null>(null),
@@ -144,7 +146,11 @@ export function App() {
         });
         setFrame(0);
         player.current?.seekTo(0);
-        setJob(null);
+        setJob((j) =>
+          j && ["uploading", "queued", "rendering", "cancelling"].includes(j.status)
+            ? j
+            : null,
+        );
       } catch (e) {
         if (id === loadId.current)
           setError(
@@ -259,25 +265,37 @@ export function App() {
     return () => window.removeEventListener("keydown", key);
   }, [togglePlay, modal, help, settingsOpen]);
   useEffect(() => {
-    if (!job || !["queued", "rendering"].includes(job.status)) return;
+    if (!job?.id || !["queued", "rendering", "cancelling"].includes(job.status))
+      return;
+    let active = true,
+      polling = false;
     const interval = setInterval(async () => {
+      if (polling) return;
+      polling = true;
       try {
         const res = await fetch(`/api/exports/${job.id}`);
         if (!res.ok) throw new Error("Could not check export progress.");
-        setJob(await res.json());
+        const result = await res.json();
+        if (active) {
+          setJob((j) => {
+            if (j?.id !== job.id || j.status !== job.status) return j;
+            if (j.status === "cancelling" && ["queued", "rendering"].includes(result.status))
+              return j;
+            return result;
+          });
+          setExportError("");
+        }
       } catch (e) {
-        setJob((j) =>
-          j
-            ? {
-                ...j,
-                status: "failed",
-                error: e instanceof Error ? e.message : "Connection lost",
-              }
-            : j,
-        );
+        if (active)
+          setExportError(e instanceof Error ? e.message : "Connection lost");
+      } finally {
+        polling = false;
       }
     }, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, [job?.id, job?.status]);
   const selectDistrict = useCallback(
     (name: string) =>
@@ -306,8 +324,37 @@ export function App() {
   const receiveFile = (file?: File) => {
     if (file) void loadAudio(file, file.name, false);
   };
+  const requestCancellation = async (id: string, previousStatus: string) => {
+    try {
+      const res = await fetch(`/api/exports/${id}/cancel`, { method: "POST" });
+      const result = await res.json();
+      if (!res.ok)
+        throw new Error(result.error || "Could not cancel export. Try again.");
+      setJob((j) => (j?.id === id && j.status === "cancelling" ? result : j));
+    } catch (e) {
+      cancelRequested.current = false;
+      setExportError(
+        e instanceof Error ? e.message : "Could not cancel export. Try again.",
+      );
+      setJob((j) =>
+        j?.id === id && j.status === "cancelling"
+          ? { ...j, status: previousStatus }
+          : j,
+      );
+    }
+  };
+  const cancelExport = async () => {
+    if (!job || cancelRequested.current) return;
+    cancelRequested.current = true;
+    setExportError("");
+    setJob({ ...job, status: "cancelling" });
+    // Let the upload return its job ID so cancellation cannot orphan a render.
+    if (job.id) await requestCancellation(job.id, job.status);
+  };
   const exportVideo = async () => {
     if (!audioBytes.current) return;
+    cancelRequested.current = false;
+    setExportError("");
     setJob({ id: "", status: "uploading", progress: 0 });
     try {
       const form = new FormData();
@@ -330,7 +377,10 @@ export function App() {
       const res = await fetch("/api/exports", { method: "POST", body: form });
       const result = await res.json();
       if (!res.ok) throw new Error(result.error || "Export failed.");
-      setJob(result);
+      if (cancelRequested.current) {
+        setJob({ ...result, status: "cancelling" });
+        await requestCancellation(result.id, result.status);
+      } else setJob(result);
     } catch (e) {
       setJob({
         id: "",
@@ -342,7 +392,8 @@ export function App() {
     }
   };
   const exportBusy =
-    !!job && ["uploading", "queued", "rendering"].includes(job.status);
+    !!job &&
+    ["uploading", "queued", "rendering", "cancelling"].includes(job.status);
   return (
     <div className="app-shell">
       <TooltipLayer />
@@ -1055,11 +1106,21 @@ export function App() {
               {job.error}
             </p>
           )}
+          {exportError && (
+            <p role="alert" className="error-message">{exportError}</p>
+          )}
+          {job?.status === "cancelled" && (
+            <p role="status" className="modal-description">
+              Export cancelled. You can start another video.
+            </p>
+          )}
           {exportBusy ? (
             <div className="render-progress" role="status">
               <div>
                 <span>
-                  {job?.status === "uploading"
+                  {job?.status === "cancelling"
+                    ? "Cancelling export…"
+                    : job?.status === "uploading"
                     ? "Preparing audio…"
                     : job?.status === "queued"
                       ? "Starting export…"
@@ -1068,7 +1129,18 @@ export function App() {
                 <span>{Math.round((job?.progress ?? 0) * 100)}%</span>
               </div>
               <progress max="1" value={job?.progress ?? 0} />
-              <small>You can close this panel while your video renders.</small>
+              <small>
+                {job?.status === "cancelling"
+                  ? "You can close this panel while cancellation finishes."
+                  : "You can close this panel while your video renders."}
+              </small>
+              <button
+                className="render-again text-button"
+                onClick={cancelExport}
+                disabled={job?.status === "cancelling"}
+              >
+                {job?.status === "cancelling" ? "Cancelling…" : "Cancel export"}
+              </button>
             </div>
           ) : job?.status === "done" ? (
             <div>

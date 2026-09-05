@@ -6,7 +6,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { existsSync } from "node:fs";
 import { bundle } from "@remotion/bundler";
-import { renderMedia, selectComposition } from "@remotion/renderer";
+import { makeCancelSignal, renderMedia, selectComposition } from "@remotion/renderer";
 import { validateSettings } from "./validate.mjs";
 import { mapRouter, getMapSnapshot } from "./map-service.mjs";
 
@@ -19,6 +19,7 @@ const cache = path.join(root, ".cache"),
 await fs.mkdir(uploadDir, { recursive: true });
 await fs.mkdir(exportDir, { recursive: true });
 const jobs = new Map();
+const cancellations = new Map();
 let bundlePromise;
 let busy = false;
 const upload = multer({
@@ -59,6 +60,8 @@ app.post("/api/exports", upload.single("audio"), async (req, res) => {
     busy = true;
     await fs.writeFile(path.join(uploadDir, `${id}.audio`), req.file.buffer);
     const job = { id, status: "queued", progress: 0 };
+    const cancellation = makeCancelSignal();
+    cancellations.set(id, cancellation);
     jobs.set(id, job);
     res.json(job);
     const props = {
@@ -66,7 +69,8 @@ app.post("/api/exports", upload.single("audio"), async (req, res) => {
       mapData,
       audioSrc: `http://127.0.0.1:${port}/audio/${id}.audio`,
     };
-    void render(job, props).finally(() => {
+    void render(job, props, cancellation).finally(() => {
+      cancellations.delete(id);
       busy = false;
     });
   } catch (e) {
@@ -77,6 +81,16 @@ app.post("/api/exports", upload.single("audio"), async (req, res) => {
 app.get("/api/exports/:id", (req, res) => {
   const job = jobs.get(req.params.id);
   if (!job) return res.status(404).json({ error: "Export not found." });
+  res.json(job);
+});
+app.post("/api/exports/:id/cancel", (req, res) => {
+  const job = jobs.get(req.params.id);
+  if (!job) return res.status(404).json({ error: "Export not found." });
+  if (["queued", "rendering", "cancelling"].includes(job.status)) {
+    job.status = "cancelling";
+    cancellations.get(job.id)?.cancel();
+    return res.status(202).json(job);
+  }
   res.json(job);
 });
 app.get("/api/exports/:id/download", (req, res) => {
@@ -101,7 +115,7 @@ app.use((err, req, res, next) => {
     });
   else next();
 });
-async function render(job, props) {
+async function render(job, props, cancellation) {
   try {
     if (process.env.NODE_ENV !== "production") bundlePromise = undefined;
     bundlePromise ??= bundle({
@@ -113,6 +127,7 @@ async function render(job, props) {
       throw e;
     });
     const serveUrl = await bundlePromise;
+    if (job.status === "cancelling") return;
     const browserExecutable =
       process.env.CHROME_PATH ||
       (existsSync("/usr/bin/google-chrome")
@@ -124,6 +139,7 @@ async function render(job, props) {
       inputProps: props,
       browserExecutable,
     });
+    if (job.status === "cancelling") return;
     job.status = "rendering";
     job.theme = props.theme;
     await renderMedia({
@@ -134,23 +150,31 @@ async function render(job, props) {
       },
       serveUrl,
       codec: "h264",
+      cancelSignal: cancellation.cancelSignal,
       inputProps: props,
       outputLocation: path.join(exportDir, `${job.id}.mp4`),
       browserExecutable,
       concurrency: 2,
       crf: 19,
       onProgress: ({ progress }) => {
-        job.progress = progress;
+        if (job.status === "rendering") job.progress = progress;
       },
     });
-    job.status = "done";
-    job.progress = 1;
+    if (job.status !== "cancelling") {
+      job.status = "done";
+      job.progress = 1;
+    }
   } catch (e) {
-    console.error("Render failed:", e);
-    job.status = "failed";
-    job.error = "Rendering failed: " + e.message;
+    if (job.status !== "cancelling") {
+      console.error("Render failed:", e);
+      job.status = "failed";
+      job.error = "Rendering failed: " + e.message;
+    }
   } finally {
     await fs.unlink(path.join(uploadDir, `${job.id}.audio`)).catch(() => {});
+    if (job.status !== "done")
+      await fs.unlink(path.join(exportDir, `${job.id}.mp4`)).catch(() => {});
+    if (job.status === "cancelling") job.status = "cancelled";
   }
 }
 const httpServer = createHttpServer(app);

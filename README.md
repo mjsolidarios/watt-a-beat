@@ -41,6 +41,9 @@ An original ambient demo track is included. Drop your own MP3, WAV, or M4A (up t
 4. **Pan & zoom** — Drag the map to pan. Use the zoom and reset buttons in the bottom-right.
 5. **Export** — Click the export button (top right) → choose resolution & duration → Render video. Files are saved to `exports/`.
 
+Use **Cancel export** in the export panel to stop an export, including while it
+is preparing. Once cancellation finishes, you can start another video.
+
 ## Tech Stack
 
 - React 19 + Vite
@@ -77,6 +80,8 @@ Video exports are rendered locally using Remotion. Requires a Chromium-based bro
 With the studio running, `npm run test:export-colors` renders two short MP4s and
 checks that their decoded frames contain the requested custom colors. Set
 `TEST_BASE_URL` to test a server on a different port.
+Run `npm run test:export-cancel` to check queued and active cancellation, cleanup,
+and starting a new export afterwards.
 
 ## Credits & Data
 
