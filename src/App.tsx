@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Player, type PlayerRef } from "@remotion/player";
 import {
+  ArrowCounterClockwise,
   ArrowUpRight,
   ArrowsOut,
   Check,
@@ -983,123 +984,22 @@ export function App() {
           <Modal
             title="Map settings"
             className="settings-modal"
+            description="Shape how your map responds to music."
             onClose={() => setSettingsOpen(false)}
           >
             <aside className="sidebar">
-              <div className="panel-title">
-                <SlidersHorizontal size={19} />
-                <h2>Map settings</h2>
-                <button
-                  className="text-button"
-                  onClick={() =>
-                    setScene((s) => ({
-                      ...defaultScene,
-                      mapData: s.mapData,
-                      enabled: s.mapData?.districts.map((d) => d.name) ?? [],
-                      audioSrc: s.audioSrc,
-                      envelopes: s.envelopes,
-                      duration: s.duration,
-                    }))
-                  }
-                >
-                  Reset
-                </button>
-              </div>
-              <section className="control-section soundtrack-section">
-                <div className="section-label">
-                  <h3>Soundtrack</h3>
-                  <span>01</span>
-                </div>
-                <button
-                  className={`upload-zone ${dragging ? "dragging" : ""}`}
-                  disabled={loading}
-                  onClick={() => upload.current?.click()}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setDragging(true);
-                  }}
-                  onDragLeave={() => setDragging(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setDragging(false);
-                    receiveFile(e.dataTransfer.files[0]);
-                  }}
-                >
-                  <span className="upload-icon">
-                    <UploadSimple size={21} />
-                  </span>
-                  <strong>
-                    {loading ? "Analyzing audio…" : "Drop an audio file here"}
-                  </strong>
-                  <span>
-                    or <u>browse files</u>
-                  </span>
-                  <small>MP3, WAV, M4A · up to 60 MB / 5 min</small>
-                </button>
-                {error && (
-                  <p role="alert" className="error-message">
-                    {error}
-                  </p>
-                )}
-                <div className="demo-note">
-                  <span className="tiny-dot" />
-                  {track.isDemo
-                    ? "Demo track loaded."
-                    : "Audio loaded."}
-                </div>
-              </section>
-              <section
-                className="control-section"
-                data-panel="atmosphere"
-                id="panel-atmosphere"
-              >
-                <div className="section-label">
-                  <h3>Atmosphere</h3>
-                  <span>02</span>
-                </div>
-                <div className="themes">
-                  {themes.map((theme) => (
-                    <button
-                      key={theme.id}
-                      className={`theme-option ${scene.theme === theme.id ? "selected" : ""}`}
-                      onClick={() => update("theme", theme.id)}
-                      aria-pressed={scene.theme === theme.id}
-                      aria-label={theme.name}
-                      data-tooltip={`${theme.name}: ${theme.desc}`}
-                    >
-                      <span className={`theme-thumb ${theme.id}`}>
-                        <span />
-                        <span />
-                        <span />
-                        {theme.id === "rain" ? (
-                          <CloudRain size={20} />
-                        ) : theme.id === "christmas" ? (
-                          <Snowflake size={20} />
-                        ) : theme.id === "moonlight" ? (
-                          <Moon size={20} />
-                        ) : (
-                          <Sparkle size={20} />
-                        )}
-                      </span>
-                      <span className="radio-mark">
-                        {scene.theme === theme.id && <span />}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </section>
               <section
                 className="control-section"
                 data-panel="effects"
                 id="panel-effects"
               >
                 <div className="section-label">
-                  <h3>Light & movement</h3>
-                  <span>03</span>
+                  <h3>Light & response</h3>
                 </div>
                 <div className="slider-group">
                   <label htmlFor="intensity">
-                    Glow intensity <span>{scene.intensity}%</span>
+                    Glow intensity
+                    <output htmlFor="intensity">{scene.intensity}%</output>
                   </label>
                   <input
                     id="intensity"
@@ -1107,6 +1007,7 @@ export function App() {
                     min="0"
                     max="100"
                     value={scene.intensity}
+                    aria-valuetext={`${scene.intensity} percent`}
                     style={
                       {
                         "--range": `${scene.intensity}%`,
@@ -1117,7 +1018,8 @@ export function App() {
                 </div>
                 <div className="slider-group">
                   <label htmlFor="sensitivity">
-                    Audio sensitivity <span>{scene.sensitivity}%</span>
+                    Audio sensitivity
+                    <output htmlFor="sensitivity">{scene.sensitivity}%</output>
                   </label>
                   <input
                     id="sensitivity"
@@ -1125,6 +1027,7 @@ export function App() {
                     min="0"
                     max="100"
                     value={scene.sensitivity}
+                    aria-valuetext={`${scene.sensitivity} percent`}
                     style={
                       {
                         "--range": `${scene.sensitivity}%`,
@@ -1133,14 +1036,14 @@ export function App() {
                     onChange={(e) => update("sensitivity", +e.target.value)}
                   />
                   <div className="range-labels">
-                    <span>Low</span>
-                    <span>High</span>
+                    <span>Subtle</span>
+                    <span>Reactive</span>
                   </div>
                 </div>
                 <div className="color-modes">
                   <span id="light-color-label">Light color</span>
                   <div
-                    className="district-chips"
+                    className="color-segments"
                     role="group"
                     aria-labelledby="light-color-label"
                   >
@@ -1157,7 +1060,6 @@ export function App() {
                         key={mode.id}
                         onClick={() => update("colorMode", mode.id)}
                       >
-                        {scene.colorMode === mode.id && <Check size={11} />}{" "}
                         {mode.name}
                       </button>
                     ))}
@@ -1184,8 +1086,7 @@ export function App() {
                 )}
                 {scene.colorMode === "random" && (
                   <p className="area-hint">
-                    Each district gets its own steady color from a fixed
-                    palette, so seeks and exports stay consistent.
+                    Each district lights up in its own color.
                   </p>
                 )}
                 <Toggle
@@ -1214,10 +1115,17 @@ export function App() {
                 <div className="section-label">
                   <h3>District power</h3>
                   <span>
-                    {scene.enabled.length} / {districtNames.length}
+                    {scene.enabled.length} of {districtNames.length} on
                   </span>
                 </div>
-                <div className="district-chips">
+                <p className="power-description">
+                  Choose which districts light up to the beat.
+                </p>
+                <div
+                  className="district-chips"
+                  role="group"
+                  aria-label="District power"
+                >
                   {districtNames.map((name) => (
                     <button
                       aria-pressed={scene.enabled.includes(name)}
@@ -1232,7 +1140,13 @@ export function App() {
                         )
                       }
                     >
-                      {scene.enabled.includes(name) && <Check size={11} />}{" "}
+                      <span className="district-check" aria-hidden="true">
+                        {scene.enabled.includes(name) ? (
+                          <Check size={12} weight="bold" />
+                        ) : (
+                          <Minus size={12} />
+                        )}
+                      </span>
                       {name}
                     </button>
                   ))}
@@ -1243,6 +1157,7 @@ export function App() {
                     disabled={scene.enabled.length === 0}
                     onClick={() => update("enabled", [])}
                   >
+                    <Lightning size={16} weight="regular" />
                     Cut all power
                   </button>
                   <button
@@ -1250,22 +1165,36 @@ export function App() {
                     disabled={scene.enabled.length === districtNames.length}
                     onClick={() => update("enabled", districtNames)}
                   >
+                    <ArrowCounterClockwise size={16} weight="regular" />
                     Reconnect all
                   </button>
                 </div>
-                <p className="area-hint">
-                  Toggle a district to cut its power. Connected districts react
-                  to the music.
-                </p>
               </section>
-              <div className="sidebar-note">
-                <Sparkle size={17} />
-                <p>
-                  The lights follow your audio. This map does not show live
-                  power outages.
-                </p>
-              </div>
             </aside>
+            <footer className="settings-footer">
+              <button
+                className="settings-reset"
+                onClick={() =>
+                  setScene((s) => ({
+                    ...defaultScene,
+                    mapData: s.mapData,
+                    enabled: s.mapData?.districts.map((d) => d.name) ?? [],
+                    audioSrc: s.audioSrc,
+                    envelopes: s.envelopes,
+                    duration: s.duration,
+                  }))
+                }
+              >
+                <ArrowCounterClockwise size={17} weight="regular" />
+                Reset defaults
+              </button>
+              <button
+                className="settings-done"
+                onClick={() => setSettingsOpen(false)}
+              >
+                Done <Check size={16} weight="bold" />
+              </button>
+            </footer>
           </Modal>
         )}
       </main>
@@ -1463,19 +1392,22 @@ function Toggle({
   onChange: () => void;
 }) {
   return (
-    <div className="toggle-row">
+    <button
+      className="toggle-row"
+      type="button"
+      role="switch"
+      aria-label={label}
+      aria-checked={checked}
+      onClick={onChange}
+    >
       <span>{label}</span>
-      <button
-        type="button"
-        role="switch"
-        aria-label={label}
-        aria-checked={checked}
+      <span
+        aria-hidden="true"
         className={`toggle ${checked ? "checked" : ""}`}
-        onClick={onChange}
       >
         <span />
-      </button>
-    </div>
+      </span>
+    </button>
   );
 }
 function ThemeIcon({ theme }: { theme: Theme }) {
@@ -1541,12 +1473,16 @@ function Modal({
   onClose,
   children,
   className = "",
+  description,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   className?: string;
+  description?: string;
 }) {
+  const titleId = useId();
+  const descriptionId = useId();
   const ref = useRef<HTMLDialogElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -1555,9 +1491,10 @@ function Modal({
     const content = contentRef.current;
     if (!dialog) return;
 
+    const previousFocus = document.activeElement;
     dialog.showModal();
 
-    if (content) {
+    if (content && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
       gsap.fromTo(
         content,
         { opacity: 0, y: 16, scale: 0.985 },
@@ -1571,12 +1508,21 @@ function Modal({
         }
       );
     }
+    return () => {
+      if (content) gsap.killTweensOf(content);
+      dialog.close();
+      if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+        previousFocus.focus({ preventScroll: true });
+      }
+    };
   }, []);
 
   return (
     <dialog
       ref={ref}
       className={`modal ${className}`}
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
       onCancel={onClose}
       onClick={(e) => {
         if (e.target === ref.current) onClose();
@@ -1584,14 +1530,21 @@ function Modal({
     >
       <div ref={contentRef} className="modal-content">
         <div className="modal-heading">
-          <h2>{title}</h2>
+          <div>
+            <h2 id={titleId}>{title}</h2>
+            {description && (
+              <p id={descriptionId} className="settings-description">
+                {description}
+              </p>
+            )}
+          </div>
           <button
             className="icon-button"
             aria-label="Close dialog"
             data-tooltip="Close dialog"
             onClick={onClose}
           >
-            <X size={20} />
+            <X size={20} weight="regular" />
           </button>
         </div>
         {children}
