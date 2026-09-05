@@ -19,7 +19,7 @@ export const RemotionRoot = () => (
       } as MapData,
     }}
     calculateMetadata={({ props }) => ({
-      durationInFrames: Math.max(1, Math.ceil(props.duration * 30)),
+      durationInFrames: Math.max(1, Math.round(props.duration * 30)),
     })}
   />
 );

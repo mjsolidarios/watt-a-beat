@@ -94,6 +94,7 @@ export function App() {
     error?: string;
   } | null>(null);
   const cancelRequested = useRef(false);
+  const browserRecorderRef = useRef<MediaRecorder | null>(null);
   const [exportError, setExportError] = useState("");
   const player = useRef<PlayerRef>(null),
     upload = useRef<HTMLInputElement>(null),
@@ -129,6 +130,10 @@ export function App() {
         }
         const envelopes = analyzeSamples(mono, buffer.sampleRate);
         if (id !== loadId.current) return;
+        // Use exact frame count from analysis to avoid duration mismatch
+        // between decoded buffer and number of envelopes. This prevents
+        // audio glitches/repeats at loop points or seek boundaries.
+        const duration = envelopes.length / 30;
         const url = URL.createObjectURL(blob);
         if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
         blobUrl.current = url;
@@ -137,7 +142,7 @@ export function App() {
           ...s,
           audioSrc: url,
           envelopes,
-          duration: buffer.duration,
+          duration,
         }));
         setTrack({
           name: name.replace(/\.[^.]+$/, ""),
@@ -306,7 +311,10 @@ export function App() {
     () => ({ ...scene, onSelect: selectDistrict, branding: false }),
     [scene, selectDistrict],
   );
-  const totalFrames = Math.max(1, Math.ceil(scene.duration * 30));
+  const totalFrames = Math.max(
+    1,
+    scene.envelopes.length || Math.round(scene.duration * 30),
+  );
   const waveform = useMemo(
     () =>
       Array.from({ length: 120 }, (_, i) => {
@@ -407,26 +415,65 @@ export function App() {
     }
   };
 
+  const getSupportedMimeType = () => {
+    // Firefox does not support vp9 in MediaRecorder in many versions.
+    // Chrome supports vp9 well. We try high quality first, then fall back.
+    const candidates = [
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm",
+    ];
+    for (const type of candidates) {
+      if (MediaRecorder.isTypeSupported(type)) {
+        return type;
+      }
+    }
+    return undefined;
+  };
+
   const exportInBrowser = async () => {
     setExportError("");
     setJob({ id: "browser", status: "recording", progress: 0 });
 
+    const durationSec =
+      exportDuration === "full" ? scene.duration : Math.min(10, scene.duration);
+    const targetWidth = resolution === "1080" ? 1920 : 1280;
+    const targetHeight = Number(resolution);
+
+    let exportCanvas: HTMLCanvasElement | null = null;
+    let audioEl: HTMLAudioElement | null = null;
+    let audioCtx: AudioContext | null = null;
+    let combinedStream: MediaStream | null = null;
+    let recorder: MediaRecorder | null = null;
+    let stopTimer: number | null = null;
+
     try {
-      const durationSec =
-        exportDuration === "full" ? scene.duration : Math.min(10, scene.duration);
+      // Create high-resolution canvas for direct capture (no screen sharing)
+      exportCanvas = document.createElement("canvas");
+      exportCanvas.width = targetWidth;
+      exportCanvas.height = targetHeight;
 
-      // Capture the current tab + audio for a perfect recording of the preview.
-      // User will be prompted to share the tab (check "Share audio" for best results).
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: "browser" },
-        audio: true,
-        // @ts-expect-error - Chrome specific
-        preferCurrentTab: true,
-      });
+      const videoStream = exportCanvas.captureStream(30);
 
-      const recorder = new MediaRecorder(stream, {
-        mimeType: "video/webm;codecs=vp9",
-      });
+      // Prepare audio for recording
+      audioEl = new Audio();
+      audioEl.src = URL.createObjectURL(audioBytes.current!);
+      audioEl.volume = muted ? 0 : 1;
+
+      audioCtx = new AudioContext();
+      const source = audioCtx.createMediaElementSource(audioEl);
+      const dest = audioCtx.createMediaStreamDestination();
+      source.connect(dest);
+      source.connect(audioCtx.destination); // also hear it while exporting
+
+      combinedStream = new MediaStream([
+        ...videoStream.getTracks(),
+        ...dest.stream.getTracks(),
+      ]);
+
+      const mimeType = getSupportedMimeType();
+      recorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : undefined);
+      browserRecorderRef.current = recorder;
 
       const chunks: Blob[] = [];
       recorder.ondataavailable = (e) => {
@@ -434,60 +481,124 @@ export function App() {
       };
 
       recorder.onstop = () => {
-        const blob = new Blob(chunks, { type: "video/webm" });
+        const actualType = recorder?.mimeType || mimeType || "video/webm";
+        const blob = new Blob(chunks, { type: actualType });
+
+        const ext = actualType.includes("mp4") ? "mp4" : "webm";
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `watt-a-beat-${(scene.mapData?.name || "map").toLowerCase().replace(/\s+/g, "-")}-${exportDuration}.webm`;
+        a.download = `watt-a-beat-${(scene.mapData?.name || "map").toLowerCase().replace(/\s+/g, "-")}-${exportDuration}.${ext}`;
         document.body.appendChild(a);
         a.click();
         a.remove();
         URL.revokeObjectURL(url);
 
-        stream.getTracks().forEach((t) => t.stop());
-
-        // Exit fullscreen if we entered it
-        if (document.fullscreenElement) {
-          document.exitFullscreen().catch(() => {});
+        // Cleanup
+        if (audioEl) {
+          audioEl.pause();
+          URL.revokeObjectURL(audioEl.src);
         }
+        if (audioCtx) audioCtx.close().catch(() => {});
+        if (combinedStream) combinedStream.getTracks().forEach((t) => t.stop());
 
+        browserRecorderRef.current = null;
         setJob(null);
         setModal(false);
       };
 
+      // Helper to rasterize current preview to the export canvas
+      const drawFrame = async () => {
+        if (!exportCanvas) return;
+        const ctx = exportCanvas.getContext("2d", { alpha: false })!;
+        ctx.fillStyle = "#101615";
+        ctx.fillRect(0, 0, targetWidth, targetHeight);
+
+        const svg = document.querySelector(".scene-player svg") as SVGSVGElement | null;
+        if (!svg) return;
+
+        const serializer = new XMLSerializer();
+        const svgString = serializer.serializeToString(svg);
+        const blob = new Blob([svgString], { type: "image/svg+xml" });
+        const url = URL.createObjectURL(blob);
+
+        await new Promise<void>((resolve) => {
+          const img = new Image();
+          img.onload = () => {
+            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+            URL.revokeObjectURL(url);
+            resolve();
+          };
+          img.src = url;
+        });
+      };
+
       recorder.start();
 
-      // Try to give the recorder the largest possible preview
-      try {
-        const container = document.querySelector(".scene-player");
-        container?.requestFullscreen?.();
-      } catch {}
-
-      // Start playback if paused so the capture has motion + lights
-      if (!playing) {
+      // Pause normal playback and take control
+      if (playing) {
         player.current?.toggle();
       }
+      player.current?.seekTo(0);
 
-      // Auto-stop after chosen duration
-      const stopMs = Math.ceil(durationSec * 1000) + 650;
-      const stopTimer = setTimeout(() => {
-        if (recorder.state === "recording") {
+      // Start audio (muted visually if needed, but we capture the stream)
+      await audioEl.play();
+
+      // Drive export by advancing time and capturing frames
+      const startTime = performance.now();
+      const tick = async () => {
+        if (!recorder || recorder.state !== "recording") return;
+
+        const elapsed = (performance.now() - startTime) / 1000;
+        if (elapsed >= durationSec) {
+          if (recorder.state === "recording") recorder.stop();
+          return;
+        }
+
+        const currentFrame = Math.floor(elapsed * 30);
+        player.current?.seekTo(currentFrame);
+
+        // Wait for React/Remotion to render the frame
+        await new Promise((r) => requestAnimationFrame(r));
+        await new Promise((r) => requestAnimationFrame(r));
+
+        await drawFrame();
+
+        // Update rough progress
+        setJob((j) =>
+          j ? { ...j, progress: Math.min(0.99, elapsed / durationSec) } : j
+        );
+
+        requestAnimationFrame(tick);
+      };
+
+      // Start the capture loop
+      requestAnimationFrame(tick);
+
+      // Safety timeout
+      stopTimer = window.setTimeout(() => {
+        if (recorder && recorder.state === "recording") {
           recorder.stop();
         }
-      }, stopMs);
+      }, (durationSec + 1) * 1000);
 
-      // If user manually stops sharing
-      stream.getVideoTracks()[0].onended = () => {
-        clearTimeout(stopTimer);
-        if (recorder.state === "recording") recorder.stop();
-      };
     } catch (e) {
+      // Cleanup on error
+      if (audioEl) {
+        audioEl.pause();
+        if (audioEl.src) URL.revokeObjectURL(audioEl.src);
+      }
+      if (audioCtx) audioCtx.close().catch(() => {});
+      if (combinedStream) combinedStream.getTracks().forEach((t) => t.stop());
+      if (stopTimer) clearTimeout(stopTimer);
+      browserRecorderRef.current = null;
+
       if ((e as Error)?.name === "NotAllowedError") {
-        setExportError("Tab sharing was cancelled. Allow screen/tab recording to export a video.");
+        setExportError("Export cancelled.");
+      } else if (e instanceof Error && /unsupported codec|MediaRecorder/i.test(e.message)) {
+        setExportError("Your browser does not support video recording in this format. Try Chrome or Edge.");
       } else {
-        setExportError(
-          e instanceof Error ? e.message : "Could not start browser recording."
-        );
+        setExportError(e instanceof Error ? e.message : "Could not export in browser.");
       }
       setJob(null);
     }
@@ -1203,7 +1314,7 @@ export function App() {
             <span>30 fps</span>
           </div>
           <p className="area-hint" style={{ marginTop: 4 }}>
-            High-quality MP4 requires the full Node server (run locally). Clicking Export or “Record in browser” will capture the live preview + audio as WebM.
+            High-quality MP4 requires running the full studio locally. Browser export captures the preview directly as WebM (no screen sharing).
           </p> 
           {job?.status === "failed" && (
             <p role="alert" className="error-message">
@@ -1222,35 +1333,39 @@ export function App() {
             <div className="render-progress" role="status">
               <div>
                 <span>
-                  {job?.status === "recording"
-                    ? "Recording from your browser…"
-                    : job?.status === "cancelling"
+                  {job?.status === "cancelling"
                     ? "Cancelling export…"
                     : job?.status === "uploading"
                     ? "Preparing audio…"
                     : job?.status === "queued"
                       ? "Starting export…"
-                      : "Rendering video…"}
-                </span>
+                      : job?.status === "recording"
+                        ? "Exporting in browser…"
+                        : "Rendering video…"}
+                </span> 
                 <span>{Math.round((job?.progress ?? 0) * 100)}%</span>
               </div>
               <progress max="1" value={job?.progress ?? 0} />
               <small>
                 {job?.status === "recording"
-                  ? "Share this tab (with audio) in the permission prompt. Stop sharing or wait for the duration to finish."
+                  ? "Capturing preview + audio directly in the browser."
                   : job?.status === "cancelling"
                   ? "You can close this panel while cancellation finishes."
                   : "You can close this panel while your video renders."}
-              </small>
+              </small> 
               <button
                 className="render-again text-button"
                 onClick={job?.status === "recording" ? () => {
-                  // For browser recording we just clear; user can stop sharing
-                  setJob(null);
-                } : cancelExport}
+                  const rec = browserRecorderRef.current;
+                  if (rec && rec.state === "recording") {
+                    rec.stop();
+                  } else {
+                    setJob(null);
+                  }
+                } : cancelExport} 
                 disabled={job?.status === "cancelling"}
               >
-                {job?.status === "recording" ? "Stop recording" : job?.status === "cancelling" ? "Cancelling…" : "Cancel export"}
+                {job?.status === "recording" ? "Stop export" : job?.status === "cancelling" ? "Cancelling…" : "Cancel export"} 
               </button>
             </div>
           ) : job?.status === "done" ? (
@@ -1279,8 +1394,8 @@ export function App() {
                 style={{ marginTop: 8 }}
                 onClick={exportInBrowser}
               >
-                Record in browser (WebM)
-              </button>
+                Export in browser (WebM)
+              </button> 
             </>
           )}
         </Modal>
@@ -1303,8 +1418,8 @@ export function App() {
             </p>
             <p>
               Choose City lights, Christmas, Moonlight, or Rain in the bottom
-              bar. Export video saves the map and audio as an MP4, including
-              rain or snow when enabled.
+              bar. Export video saves the map and audio (as MP4 locally or WebM
+              in the browser), including rain or snow when enabled.
             </p>
             <p>
               Districts group nearby streets for the lighting effect. They do

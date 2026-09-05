@@ -43,7 +43,7 @@ export function validateSettings(s, mapData) {
   if (
     !Array.isArray(s.envelopes) ||
     s.envelopes.length > 9001 ||
-    s.envelopes.length < Math.ceil(s.duration * 30) ||
+    s.envelopes.length < Math.round(s.duration * 30) - 1 ||
     !s.envelopes.every(
       (r) =>
         Array.isArray(r) && r.length === 3 && r.every((v) => number(v, 0, 1)),
