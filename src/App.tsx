@@ -1269,7 +1269,7 @@ export function App() {
           </Modal>
         )}
       </main>
-      {/* Export UI hidden for now — separate export server planned in the future */
+      {/* Export UI hidden for now - separate export server planned in the future */}
       {false && modal && (
         <Modal onClose={() => setModal(false)} title="Export video">
           <p className="modal-description">
@@ -1311,7 +1311,7 @@ export function App() {
           </p> 
           {job?.status === "failed" && (
             <p role="alert" className="error-message">
-              {job.error}
+              {job!.error}
             </p>
           )}
           {exportError && (
@@ -1365,7 +1365,7 @@ export function App() {
             <div>
               <a
                 className="primary-action"
-                href={`/api/exports/${job.id}/download`}
+                href={`/api/exports/${job!.id}/download`}
                 download
               >
                 <DownloadSimple size={18} /> Download video
