@@ -3,7 +3,10 @@ import { useMemo } from "react";
 import { visibleBounds, intersects, pointVisible } from "./map-geometry.mjs";
 import type { SceneProps } from "./types";
 import {
+  baseLightColor,
+  districtLightColor,
   districtPower,
+  particleVisibility,
   snowflakeAt,
   snowflakePath,
   raindropAt,
@@ -18,6 +21,8 @@ export function MapScene(props: SceneProps) {
     { fps } = useVideoConfig();
   const {
     theme,
+    colorMode = "theme",
+    lightColor = "#e6c283",
     intensity,
     sensitivity,
     enabled,
@@ -54,12 +59,7 @@ export function MapScene(props: SceneProps) {
       water: data.water.filter((r) => intersects(r.bounds, view)),
     };
   }, [props.mapData, zoom, pan.x, pan.y]);
-  const gold =
-    theme === "rain"
-      ? "#9bbfc8"
-      : theme === "moonlight"
-        ? "#b5d2e0"
-        : "#e6c283";
+  const gold = baseLightColor(theme, colorMode, lightColor);
   if (!map) return <AbsoluteFill style={{ backgroundColor: "#101615" }} />;
   return (
     <AbsoluteFill
@@ -127,14 +127,12 @@ export function MapScene(props: SceneProps) {
               sensitivity,
             );
             const brightness = (energy * intensity) / 100;
-            const color =
-              theme === "christmas"
-                ? index % 3 === 0
-                  ? "#d77a70"
-                  : index % 3 === 1
-                    ? "#85bc9c"
-                    : gold
-                : gold;
+            const color = districtLightColor(
+              index,
+              theme,
+              colorMode,
+              lightColor,
+            );
             return (
               <g
                 key={district.name}
@@ -284,6 +282,8 @@ export function MapScene(props: SceneProps) {
             aria-hidden="true"
           >
             {snowflakes.map((path, i) => {
+              const fade = particleVisibility(i, snowflakes.length, frame, fps);
+              if (fade <= 0) return null;
               const flake = snowflakeAt(i, frame, fps);
               return (
                 <path
@@ -291,7 +291,7 @@ export function MapScene(props: SceneProps) {
                   d={path}
                   transform={`translate(${flake.x} ${flake.y}) rotate(${flake.rotation}) scale(${flake.radius})`}
                   strokeWidth={0.13}
-                  opacity={flake.opacity}
+                  opacity={flake.opacity * fade}
                 />
               );
             })}
@@ -307,6 +307,8 @@ export function MapScene(props: SceneProps) {
             data-testid="rainfall"
           >
             {Array.from({ length: 160 }, (_, index) => {
+              const fade = particleVisibility(index, 160, frame, fps);
+              if (fade <= 0) return null;
               const drop = raindropAt(index, frame, fps);
               return (
                 <line
@@ -316,7 +318,7 @@ export function MapScene(props: SceneProps) {
                   x2={drop.x + drop.length * 0.18}
                   y2={drop.y + drop.length}
                   strokeWidth={drop.width}
-                  opacity={drop.opacity}
+                  opacity={drop.opacity * fade}
                 />
               );
             })}

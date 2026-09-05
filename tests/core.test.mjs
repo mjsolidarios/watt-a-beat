@@ -54,6 +54,37 @@ test("rain theme and particle toggle survive export validation", () => {
   assert.equal(output.theme, "rain");
   assert.equal(output.particles, false);
 });
+test("export validation defaults to theme light colors", () => {
+  const output = validateSettings({ ...settings });
+  assert.equal(output.colorMode, "theme");
+  assert.equal(output.lightColor, "#e6c283");
+});
+test("export validation keeps custom and random light colors", () => {
+  const custom = validateSettings({
+    ...settings,
+    colorMode: "custom",
+    lightColor: "#ff8844",
+  });
+  assert.equal(custom.colorMode, "custom");
+  assert.equal(custom.lightColor, "#ff8844");
+  const random = validateSettings({
+    ...settings,
+    colorMode: "random",
+    lightColor: "#ff8844",
+  });
+  assert.equal(random.colorMode, "random");
+});
+test("export validation rejects bad color modes and resets bad colors", () => {
+  assert.throws(() =>
+    validateSettings({ ...settings, colorMode: "rainbow" }),
+  );
+  const output = validateSettings({
+    ...settings,
+    colorMode: "custom",
+    lightColor: "not-a-color",
+  });
+  assert.equal(output.lightColor, "#e6c283");
+});
 test('export preserves the map position and rejects invalid pan values', () => {
   assert.deepEqual(validateSettings({...settings, pan:{x:120,y:-60}}).pan, {x:120,y:-60});
   assert.throws(()=>validateSettings({...settings, pan:{x:Infinity,y:0}}));

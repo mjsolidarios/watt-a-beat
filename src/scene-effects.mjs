@@ -42,6 +42,59 @@ export function snowflakeAt(index, frame, fps) {
   };
 }
 
+// Particles stay hidden until the music starts (frame 0) and then fade in
+// gradually. Pure frame-based so preview seeks and MP4 renders match.
+export const PARTICLE_FADE_SECONDS = 4;
+export function particleVisibility(index, count, frame, fps) {
+  const safeFps = fps > 0 ? fps : 30;
+  const t = Math.max(0, frame / safeFps);
+  const staggerWindow = 2.5;
+  const fadeWindow = PARTICLE_FADE_SECONDS - staggerWindow;
+  const delay = seeded(index * 31 + 7) * staggerWindow;
+  const local = Math.max(0, Math.min(1, (t - delay) / fadeWindow));
+  return local * local * (3 - 2 * local);
+}
+
+// One stable color per district when the user picks random lights.
+export const RANDOM_LIGHT_COLORS = [
+  "#e6c283",
+  "#d77a70",
+  "#85bc9c",
+  "#9bbfc8",
+  "#f2e7cd",
+  "#7fc0a8",
+  "#e09a5f",
+];
+
+export function themeLightColor(theme) {
+  if (theme === "rain") return "#9bbfc8";
+  if (theme === "moonlight") return "#b5d2e0";
+  return "#e6c283";
+}
+
+export function isLightColor(value) {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+// Single base color: the custom pick when requested, otherwise the theme.
+export function baseLightColor(theme, colorMode, lightColor) {
+  if (colorMode === "custom" && isLightColor(lightColor)) return lightColor;
+  return themeLightColor(theme);
+}
+
+// Per-district light color. Random mode deals each district a stable palette
+// color; christmas keeps its red/green pattern unless the user overrides it.
+export function districtLightColor(index, theme, colorMode, lightColor) {
+  if (colorMode === "random")
+    return RANDOM_LIGHT_COLORS[index % RANDOM_LIGHT_COLORS.length];
+  if (colorMode === "custom") return baseLightColor(theme, colorMode, lightColor);
+  if (theme === "christmas") {
+    if (index % 3 === 0) return "#d77a70";
+    if (index % 3 === 1) return "#85bc9c";
+  }
+  return themeLightColor(theme);
+}
+
 function seeded(seed) {
   let value = Math.imul(seed + 1, 0x45d9f3b);
   value = Math.imul(value ^ (value >>> 16), 0x45d9f3b);

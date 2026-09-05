@@ -1,10 +1,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  RANDOM_LIGHT_COLORS,
+  baseLightColor,
+  districtLightColor,
   districtPower,
+  isLightColor,
   snowflakeAt,
   snowflakePath,
   raindropAt,
+  themeLightColor,
 } from "../src/scene-effects.mjs";
 
 test("quiet audio cuts power; loud music restores every district", () => {
@@ -54,4 +59,42 @@ test("snow falls at three depths and stays deterministic across seeks", () => {
       flake.x >= -20 && flake.x < 1620 && flake.y >= -30 && flake.y < 930,
     );
   }
+});
+test("theme mode keeps the default light color per atmosphere", () => {
+  assert.equal(themeLightColor("midnight"), "#e6c283");
+  assert.equal(themeLightColor("christmas"), "#e6c283");
+  assert.equal(themeLightColor("rain"), "#9bbfc8");
+  assert.equal(themeLightColor("moonlight"), "#b5d2e0");
+  assert.equal(baseLightColor("rain", "theme", "#e6c283"), "#9bbfc8");
+});
+test("christmas theme mode keeps its red and green district pattern", () => {
+  assert.equal(districtLightColor(0, "christmas", "theme", "#e6c283"), "#d77a70");
+  assert.equal(districtLightColor(1, "christmas", "theme", "#e6c283"), "#85bc9c");
+  assert.equal(districtLightColor(2, "christmas", "theme", "#e6c283"), "#e6c283");
+});
+test("custom mode paints every district with the picked color", () => {
+  for (let i = 0; i < 7; i++)
+    assert.equal(districtLightColor(i, "midnight", "custom", "#ff8844"), "#ff8844");
+  assert.equal(baseLightColor("rain", "custom", "#ff8844"), "#ff8844");
+  assert.ok(isLightColor("#ff8844"));
+  assert.ok(!isLightColor("red"));
+  assert.ok(!isLightColor("#fff"));
+});
+test("custom mode falls back to the theme color for invalid picks", () => {
+  assert.equal(districtLightColor(0, "rain", "custom", "nope"), "#9bbfc8");
+  assert.equal(districtLightColor(0, "rain", "custom", undefined), "#9bbfc8");
+  assert.equal(baseLightColor("moonlight", "custom", "#12345"), "#b5d2e0");
+});
+test("random mode deals each district a steady palette color", () => {
+  const colors = Array.from({ length: 7 }, (_, i) =>
+    districtLightColor(i, "midnight", "random", "#e6c283"),
+  );
+  for (const color of colors) assert.ok(RANDOM_LIGHT_COLORS.includes(color));
+  assert.equal(new Set(colors).size, colors.length);
+  assert.deepEqual(
+    colors,
+    Array.from({ length: 7 }, (_, i) =>
+      districtLightColor(i, "christmas", "random", "#ffffff"),
+    ),
+  );
 });

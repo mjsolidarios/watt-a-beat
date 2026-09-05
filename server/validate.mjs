@@ -13,6 +13,16 @@ export function validateSettings(s, mapData) {
     typeof v === "number" && Number.isFinite(v) && v >= min && v <= max;
   if (!["midnight", "christmas", "moonlight", "rain"].includes(s.theme))
     throw new Error("Invalid atmosphere.");
+  const colorMode =
+    s.colorMode === undefined || s.colorMode === null
+      ? "theme"
+      : s.colorMode;
+  if (!["theme", "custom", "random"].includes(colorMode))
+    throw new Error("Invalid light color mode.");
+  const lightColor =
+    typeof s.lightColor === "string" && /^#[0-9a-fA-F]{6}$/.test(s.lightColor)
+      ? s.lightColor
+      : "#e6c283";
   if (
     !number(s.duration, 0.1, 300) ||
     !number(s.intensity, 0, 100) ||
@@ -42,6 +52,8 @@ export function validateSettings(s, mapData) {
     throw new Error("Invalid audio analysis.");
   return {
     theme: s.theme,
+    colorMode,
+    lightColor,
     duration: s.duration,
     intensity: s.intensity,
     sensitivity: s.sensitivity,

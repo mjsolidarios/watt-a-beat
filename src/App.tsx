@@ -26,8 +26,9 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { MapScene } from "./MapScene";
-import { defaultScene, type SceneProps, type Theme } from "./types";
+import { defaultScene, type ColorMode, type SceneProps, type Theme } from "./types";
 import { analyzeSamples } from "./audio-analysis.mjs";
+import { isLightColor } from "./scene-effects.mjs";
 import { useMapArea } from "./useMapArea";
 import { LocationSearch } from "./LocationSearch";
 import { TooltipLayer } from "./TooltipLayer";
@@ -362,7 +363,6 @@ export function App() {
           </span>
           <span className="brand-copy">
             <span className="brand-name">Watt a Beat</span>
-            <span className="brand-description">Music-reactive maps</span>
           </span>
           <span className="brand-divider" />
           <span className="brand-place" data-tooltip={scene.mapData?.name}>
@@ -882,6 +882,57 @@ export function App() {
                     <span>High</span>
                   </div>
                 </div>
+                <div className="color-modes">
+                  <span id="light-color-label">Light color</span>
+                  <div
+                    className="district-chips"
+                    role="group"
+                    aria-labelledby="light-color-label"
+                  >
+                    {(
+                      [
+                        { id: "theme", name: "Theme" },
+                        { id: "custom", name: "Custom" },
+                        { id: "random", name: "Random" },
+                      ] as { id: ColorMode; name: string }[]
+                    ).map((mode) => (
+                      <button
+                        aria-pressed={scene.colorMode === mode.id}
+                        className={scene.colorMode === mode.id ? "on" : ""}
+                        key={mode.id}
+                        onClick={() => update("colorMode", mode.id)}
+                      >
+                        {scene.colorMode === mode.id && <Check size={11} />}{" "}
+                        {mode.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {scene.colorMode === "custom" && (
+                  <div className="color-row">
+                    <input
+                      type="color"
+                      aria-label="Custom light color"
+                      value={
+                        isLightColor(scene.lightColor)
+                          ? scene.lightColor
+                          : "#e6c283"
+                      }
+                      onChange={(e) => update("lightColor", e.target.value)}
+                    />
+                    <code>
+                      {isLightColor(scene.lightColor)
+                        ? scene.lightColor
+                        : "#e6c283"}
+                    </code>
+                  </div>
+                )}
+                {scene.colorMode === "random" && (
+                  <p className="area-hint">
+                    Each district gets its own steady color from a fixed
+                    palette, so seeks and exports stay consistent.
+                  </p>
+                )}
                 <Toggle
                   label="Map labels"
                   checked={scene.labels}

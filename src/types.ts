@@ -1,4 +1,5 @@
 export type Theme = "midnight" | "christmas" | "moonlight" | "rain";
+export type ColorMode = "theme" | "custom" | "random";
 export type LocationResult = {
   name: string;
   description: string;
@@ -34,6 +35,8 @@ export type SceneProps = {
   audioSrc: string;
   envelopes: number[][];
   theme: Theme;
+  colorMode: ColorMode;
+  lightColor: string;
   intensity: number;
   sensitivity: number;
   enabled: string[];
@@ -60,6 +63,8 @@ export const defaultScene: SceneProps = {
   audioSrc: "",
   envelopes: [],
   theme: "midnight",
+  colorMode: "theme",
+  lightColor: "#e6c283",
   intensity: 70,
   sensitivity: 65,
   enabled: districtNames,
