@@ -376,24 +376,125 @@ export function App() {
       );
       const res = await fetch("/api/exports", { method: "POST", body: form });
       const result = await res.json();
-      if (!res.ok) throw new Error(result.error || "Export failed.");
+      if (!res.ok) {
+        // Server-side export not available (e.g. Vercel). Fall back to browser recording.
+        const msg = result?.error || "";
+        if (msg.includes("not available") || msg.includes("not supported") || res.status === 501) {
+          setJob(null);
+          void exportInBrowser();
+          return;
+        }
+        throw new Error(msg || "Export failed.");
+      }
       if (cancelRequested.current) {
         setJob({ ...result, status: "cancelling" });
         await requestCancellation(result.id, result.status);
       } else setJob(result);
     } catch (e) {
+      // If server call itself fails (network, HTML instead of JSON, etc.), offer browser export
+      const message = e instanceof Error ? e.message : "Export failed.";
+      if (message.includes("JSON") || message.toLowerCase().includes("unexpected")) {
+        setJob(null);
+        void exportInBrowser();
+        return;
+      }
       setJob({
         id: "",
         status: "failed",
         progress: 0,
-        error:
-          e instanceof Error ? e.message : "Export failed. Please try again.",
+        error: message || "Export failed. Please try again.",
       });
+    }
+  };
+
+  const exportInBrowser = async () => {
+    setExportError("");
+    setJob({ id: "browser", status: "recording", progress: 0 });
+
+    try {
+      const durationSec =
+        exportDuration === "full" ? scene.duration : Math.min(10, scene.duration);
+
+      // Capture the current tab + audio for a perfect recording of the preview.
+      // User will be prompted to share the tab (check "Share audio" for best results).
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: "browser" },
+        audio: true,
+        // @ts-expect-error - Chrome specific
+        preferCurrentTab: true,
+      });
+
+      const recorder = new MediaRecorder(stream, {
+        mimeType: "video/webm;codecs=vp9",
+      });
+
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+
+      recorder.onstop = () => {
+        const blob = new Blob(chunks, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `watt-a-beat-${(scene.mapData?.name || "map").toLowerCase().replace(/\s+/g, "-")}-${exportDuration}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+
+        stream.getTracks().forEach((t) => t.stop());
+
+        // Exit fullscreen if we entered it
+        if (document.fullscreenElement) {
+          document.exitFullscreen().catch(() => {});
+        }
+
+        setJob(null);
+        setModal(false);
+      };
+
+      recorder.start();
+
+      // Try to give the recorder the largest possible preview
+      try {
+        const container = document.querySelector(".scene-player");
+        container?.requestFullscreen?.();
+      } catch {}
+
+      // Start playback if paused so the capture has motion + lights
+      if (!playing) {
+        player.current?.toggle();
+      }
+
+      // Auto-stop after chosen duration
+      const stopMs = Math.ceil(durationSec * 1000) + 650;
+      const stopTimer = setTimeout(() => {
+        if (recorder.state === "recording") {
+          recorder.stop();
+        }
+      }, stopMs);
+
+      // If user manually stops sharing
+      stream.getVideoTracks()[0].onended = () => {
+        clearTimeout(stopTimer);
+        if (recorder.state === "recording") recorder.stop();
+      };
+    } catch (e) {
+      if ((e as Error)?.name === "NotAllowedError") {
+        setExportError("Tab sharing was cancelled. Allow screen/tab recording to export a video.");
+      } else {
+        setExportError(
+          e instanceof Error ? e.message : "Could not start browser recording."
+        );
+      }
+      setJob(null);
     }
   };
   const exportBusy =
     !!job &&
-    ["uploading", "queued", "rendering", "cancelling"].includes(job.status);
+    ["uploading", "queued", "rendering", "cancelling", "recording"].includes(job.status);
   return (
     <div className="app-shell">
       <TooltipLayer />
@@ -1097,10 +1198,13 @@ export function App() {
             </select>
           </label>
           <div className="export-summary">
-            <span>MP4 / H.264</span>
+            <span>Server MP4 (local only)</span>
+            <span>or Browser WebM</span>
             <span>30 fps</span>
-            <span>Audio included</span>
           </div>
+          <p className="area-hint" style={{ marginTop: 4 }}>
+            High-quality MP4 requires the full Node server (run locally). Clicking Export or “Record in browser” will capture the live preview + audio as WebM.
+          </p> 
           {job?.status === "failed" && (
             <p role="alert" className="error-message">
               {job.error}
@@ -1118,7 +1222,9 @@ export function App() {
             <div className="render-progress" role="status">
               <div>
                 <span>
-                  {job?.status === "cancelling"
+                  {job?.status === "recording"
+                    ? "Recording from your browser…"
+                    : job?.status === "cancelling"
                     ? "Cancelling export…"
                     : job?.status === "uploading"
                     ? "Preparing audio…"
@@ -1130,16 +1236,21 @@ export function App() {
               </div>
               <progress max="1" value={job?.progress ?? 0} />
               <small>
-                {job?.status === "cancelling"
+                {job?.status === "recording"
+                  ? "Share this tab (with audio) in the permission prompt. Stop sharing or wait for the duration to finish."
+                  : job?.status === "cancelling"
                   ? "You can close this panel while cancellation finishes."
                   : "You can close this panel while your video renders."}
               </small>
               <button
                 className="render-again text-button"
-                onClick={cancelExport}
+                onClick={job?.status === "recording" ? () => {
+                  // For browser recording we just clear; user can stop sharing
+                  setJob(null);
+                } : cancelExport}
                 disabled={job?.status === "cancelling"}
               >
-                {job?.status === "cancelling" ? "Cancelling…" : "Cancel export"}
+                {job?.status === "recording" ? "Stop recording" : job?.status === "cancelling" ? "Cancelling…" : "Cancel export"}
               </button>
             </div>
           ) : job?.status === "done" ? (
@@ -1159,9 +1270,18 @@ export function App() {
               </button>
             </div>
           ) : (
-            <button className="primary-action" onClick={exportVideo}>
-              <ArrowUpRight size={18} /> Export video
-            </button>
+            <>
+              <button className="primary-action" onClick={exportVideo}>
+                <ArrowUpRight size={18} /> Export video
+              </button>
+              <button
+                className="text-button"
+                style={{ marginTop: 8 }}
+                onClick={exportInBrowser}
+              >
+                Record in browser (WebM)
+              </button>
+            </>
           )}
         </Modal>
       )}
