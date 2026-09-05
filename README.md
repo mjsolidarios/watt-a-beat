@@ -1,0 +1,46 @@
+# Watt a Beat
+
+An interactive music-reactive brownout visualizer built with React, Vite, and Remotion. Quiet passages cut district power; stronger beats restore it. The map fills the window, with atmosphere and playback controls in a floating dock. Drop audio anywhere on the map or click the upload banner. Drag to pan, use the zoom controls, and open the header's settings button to adjust lighting or disconnect districts. The layout fits one desktop or mobile viewport, with detailed controls in a dismissible settings panel. Christmas adds 120 seeded crystalline snowflakes with varied branching, sizes, depth, drift, and rotation. Snow moves during playback and in exported videos.
+
+Four atmospheres are available: City lights, Christmas, Moonlight, and Rain. Rain combines cool district lighting with 160 seeded, slanted rain streaks. Snowfall and Rainfall can be toggled in Effects; weather and audio-reactive lighting render together in MP4 exports.
+
+## Run
+
+```sh
+npm install
+npm run dev
+```
+
+Open http://localhost:3000. An original 32-second ambient demo is included. Upload MP3, WAV, M4A or another browser-supported audio format (60 MB / 5 minutes maximum). Play, select an atmosphere, then choose **Export video**. MP4s render locally into `exports/`; the panel provides a download link. Only one export runs at a time. Uploaded render audio is removed when its render finishes. Exports persist on disk, while job status lasts for the server session.
+
+## Philippine locations
+
+Use the top-left search box to find a Philippine city, town, or landmark. Press Enter, then select a result. There is no return-to-Iloilo shortcut. Iloilo is the bundled starting area; other locations load on demand through Photon geocoding and OpenStreetMap/Overpass. Search and new map areas require internet access.
+
+Only one map area is held by the player. Selecting another place replaces the old street geometry. After pan or zoom settles for 1.2 seconds, the app loads the new bounded view and releases the previous area. Streets are clipped to the area, offscreen roads/lights are culled during camera movement, and roads/lights have explicit processing caps. Views cover 2–20 km; search again to travel more than 30 km from the selected place. Up to six processed snapshots are cached on disk, not retained as active map layers.
+
+Exports use a fixed local snapshot of the selected area, so rendering does not need live map requests. Local lighting zones are assigned to nearby place labels and are artistic controls, not official boundaries or live outage reports.
+
+The public [Photon demo](https://github.com/komoot/photon) and Overpass services have availability and usage limits. For a deployed app, configure your own/provider endpoints with `GEOCODER_URL` and `OVERPASS_URL` (Photon-compatible GET and Overpass-compatible POST). Searches are explicit, rate-limited, cached, and filtered to country code PH on the server.
+
+## Build and production
+
+```sh
+npm run build
+npm start
+npm test
+```
+
+Node.js 22+ recommended. Remotion needs Chrome and its system dependencies. The server uses `/usr/bin/google-chrome` if present, otherwise Remotion's browser management. Set `CHROME_PATH` to override and `PORT` to change the port. This is a local single-user studio; add authentication, persistent jobs, and storage limits before hosting it publicly.
+
+## Remotion
+
+`src/MapScene.tsx` is shared by the interactive Player and the offline renderer. All lighting and snow animation derives from `useCurrentFrame()`. Audio is decoded locally in the browser and analyzed into bass, midrange, and treble envelopes at 30 fps. `src/scene-effects.mjs` smooths the envelopes over eight frames and applies staggered district power thresholds. Silence produces zero light emission. The same pure functions determine falling snow and power in every preview/export frame. The preview's temporary district focus is cleared during export; district disconnections and zoom are preserved. This is an artistic simulation, not live electricity outage data.
+
+`npm run studio` opens the `WattABeat` composition in Remotion Studio. The default composition shows the bundled Iloilo map without audio; the app supplies the selected map, analyzed audio, and settings for exports. See [Remotion Player](https://www.remotion.dev/docs/player) and [renderMedia](https://www.remotion.dev/docs/renderer/render-media). Remotion's licensing terms apply to use of its packages.
+
+## Map and audio sources
+
+Roads, rivers, and coastline are from [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), obtained through Overpass. The bundled Iloilo snapshot in `src/data/default-map.json` was prepared on 2026-09-05 and is available under ODbL. It includes seven lighting zones. Other locations use up to seven nearby place labels. The legacy `src/data/map.json` asset is not imported by the app.
+
+`public/after-hours.wav` is an original synthesized ambient demo generated by `scripts/prepare-assets.mjs`. The asset script expects the original Overpass response at `/tmp/iloilo-osm.json`; all prepared assets are included, so normal development and export work offline after installing dependencies. Fonts are self-hosted through Fontsource.

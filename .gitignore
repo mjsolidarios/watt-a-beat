@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.cache/
+exports/
+uploads/
+*.tsbuildinfo
+
+# Local agent skill references (not part of the project)
+.agents/
+.claude/
+skills-lock.json

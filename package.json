@@ -1,0 +1,38 @@
+{
+  "name": "watt-a-beat",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server/index.mjs",
+    "build": "tsc -b && vite build",
+    "start": "NODE_ENV=production node server/index.mjs",
+    "studio": "remotion studio src/remotion/index.ts",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@fontsource/geist": "^5.3.0",
+    "@fontsource/geist-mono": "^5.3.0",
+    "@phosphor-icons/react": "^2.1.10",
+    "@remotion/bundler": "^4.0.520",
+    "@remotion/cli": "^4.0.520",
+    "@remotion/player": "^4.0.520",
+    "@remotion/renderer": "^4.0.520",
+    "express": "^5.2.1",
+    "gsap": "^3.15.0",
+    "multer": "^2.3.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "remotion": "^4.0.520"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^5.2.0",
+    "prettier": "^3.9.6",
+    "typescript": "^7.0.2",
+    "vite": "^7.3.6"
+  }
+}
