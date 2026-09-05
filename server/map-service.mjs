@@ -10,11 +10,26 @@ import path from "node:path";
 import { buildArea, geographicBounds } from "../src/map-geometry.mjs";
 import { buildingQuery } from "../src/buildings.mjs";
 
-const secret = randomBytes(32),
-  memorySearch = new Map(),
+const SIGNING_SECRET =
+  process.env.MAP_SIGNING_SECRET ||
+  (process.env.NODE_ENV === "production"
+    ? null // must be provided in prod / serverless
+    : randomBytes(32));
+
+function getSecret() {
+  if (SIGNING_SECRET) return SIGNING_SECRET;
+  // Dev fallback: stable random per process
+  return randomBytes(32);
+}
+
+const memorySearch = new Map(),
   pending = new Map();
-const mapDir = path.join(process.cwd(), ".cache", "maps");
-await fs.mkdir(mapDir, { recursive: true });
+const isServerless =
+  !!process.env.VERCEL || process.env.NODE_ENV === "production" && !process.env.PORT;
+const mapDir = isServerless
+  ? path.join("/tmp", "maps")
+  : path.join(process.cwd(), ".cache", "maps");
+fs.mkdir(mapDir, { recursive: true }).catch(() => {});
 const userAgent = "WattABeat/1.0 (Philippines music map; local studio)";
 let lastSearch = 0,
   mapBusy = false;
@@ -25,17 +40,24 @@ const defaultLocation = {
   lon: 122.55,
   country: "PH",
 };
+function getSigningKey() {
+  const s = getSecret();
+  if (!s) throw new Error("MAP_SIGNING_SECRET is not configured (required for production).");
+  return s;
+}
+
 function sign(location) {
   const payload = Buffer.from(JSON.stringify(location)).toString("base64url");
   return (
-    payload + "." + createHmac("sha256", secret).update(payload).digest("hex")
+    payload + "." + createHmac("sha256", getSigningKey()).update(payload).digest("hex")
   );
 }
+
 function verify(token) {
   if (typeof token !== "string" || token.length > 4000)
     throw new Error("Select a Philippine location from search results.");
   const [payload, signature] = token.split(".");
-  const expected = createHmac("sha256", secret).update(payload).digest("hex");
+  const expected = createHmac("sha256", getSigningKey()).update(payload).digest("hex");
   if (
     !signature ||
     signature.length !== expected.length ||
@@ -47,6 +69,7 @@ function verify(token) {
     throw new Error("Only Philippine locations are supported.");
   return place;
 }
+
 export function filterPhilippineResults(data) {
   return (data.features ?? [])
     .filter(
@@ -192,46 +215,89 @@ async function loadArea(location, view, signal) {
   pending.set(id, work);
   return work;
 }
+export async function searchLocations(q) {
+  const query = String(q ?? "").trim();
+  if (query.length < 2 || query.length > 120) {
+    throw Object.assign(new Error("Enter a place name between 2 and 120 characters."), { status: 400 });
+  }
+  const key = query.toLowerCase();
+  let results = memorySearch.get(key);
+  if (!results) {
+    if (Date.now() - lastSearch < 1100) {
+      throw Object.assign(new Error("Please wait a moment before searching again."), { status: 429 });
+    }
+    lastSearch = Date.now();
+    const url = new URL(
+      process.env.GEOCODER_URL || "https://photon.komoot.io/api/",
+    );
+    url.search = new URLSearchParams({
+      q: query,
+      countrycode: "PH",
+      limit: "8",
+      lang: "en",
+    }).toString();
+    const data = await readJsonResponse(
+      await fetch(url, {
+        headers: { "User-Agent": userAgent },
+        signal: AbortSignal.timeout(15000),
+      }),
+      2 * 1024 * 1024,
+    );
+    results = filterPhilippineResults(data);
+    memorySearch.set(key, results);
+    if (memorySearch.size > 100)
+      memorySearch.delete(memorySearch.keys().next().value);
+  }
+  return results.map((r) => ({ ...r, token: sign(r) }));
+}
+
+export async function loadMap(token, requestedView) {
+  const location = verify(token);
+  const requested = requestedView ?? {
+    lat: location.lat,
+    lon: location.lon,
+    widthKm: 10,
+  };
+  const view = {
+    lat: Number(requested.lat),
+    lon: Number(requested.lon),
+    widthKm: Number(requested.widthKm),
+  };
+  if (
+    !Object.values(view).every(Number.isFinite) ||
+    view.widthKm < 2 ||
+    view.widthKm > 20 ||
+    view.lat < 4 ||
+    view.lat > 22 ||
+    view.lon < 116 ||
+    view.lon > 127
+  ) {
+    throw new Error(
+      "Choose a view between 2 and 20 km wide within the Philippines.",
+    );
+  }
+  const distance = Math.hypot(
+    (view.lon - location.lon) *
+      111 *
+      Math.cos((location.lat * Math.PI) / 180),
+    (view.lat - location.lat) * 111,
+  );
+  if (distance > 30)
+    throw new Error("Search for a new location to explore farther.");
+
+  const controller = new AbortController();
+  // Note: caller is responsible for aborting if needed
+  return await loadArea(location, view, controller.signal);
+}
+
 export const mapRouter = Router();
 mapRouter.get("/locations", async (req, res) => {
   try {
-    const q = String(req.query.q ?? "").trim();
-    if (q.length < 2 || q.length > 120)
-      return res
-        .status(400)
-        .json({ error: "Enter a place name between 2 and 120 characters." });
-    const key = q.toLowerCase();
-    let results = memorySearch.get(key);
-    if (!results) {
-      if (Date.now() - lastSearch < 1100)
-        return res
-          .status(429)
-          .json({ error: "Please wait a moment before searching again." });
-      lastSearch = Date.now();
-      const url = new URL(
-        process.env.GEOCODER_URL || "https://photon.komoot.io/api/",
-      );
-      url.search = new URLSearchParams({
-        q,
-        countrycode: "PH",
-        limit: "8",
-        lang: "en",
-      }).toString();
-      const data = await readJsonResponse(
-        await fetch(url, {
-          headers: { "User-Agent": userAgent },
-          signal: AbortSignal.timeout(15000),
-        }),
-        2 * 1024 * 1024,
-      );
-      results = filterPhilippineResults(data);
-      memorySearch.set(key, results);
-      if (memorySearch.size > 100)
-        memorySearch.delete(memorySearch.keys().next().value);
-    }
-    res.json({ results: results.map((r) => ({ ...r, token: sign(r) })) });
+    const results = await searchLocations(req.query.q);
+    res.json({ results });
   } catch (e) {
-    res.status(502).json({
+    const status = e.status || (e.name === "TimeoutError" ? 504 : 502);
+    res.status(status).json({
       error:
         e.name === "TimeoutError"
           ? "Location search timed out. Please try again."
@@ -239,11 +305,15 @@ mapRouter.get("/locations", async (req, res) => {
     });
   }
 });
+export async function getDefaultMap() {
+  return await getMapSnapshot("iloilo-default");
+}
+
 mapRouter.get("/maps/default", async (_, res) => {
   try {
     res
       .set("Cache-Control", "no-store")
-      .json(await getMapSnapshot("iloilo-default"));
+      .json(await getDefaultMap());
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
@@ -254,40 +324,8 @@ mapRouter.post("/maps", json({ limit: "8kb" }), async (req, res) => {
     if (!res.writableEnded) controller.abort();
   });
   try {
-    const location = verify(req.body.token);
-    const requested = req.body.view ?? {
-      lat: location.lat,
-      lon: location.lon,
-      widthKm: 10,
-    };
-    const view = {
-      lat: Number(requested.lat),
-      lon: Number(requested.lon),
-      widthKm: Number(requested.widthKm),
-    };
-    if (
-      !Object.values(view).every(Number.isFinite) ||
-      view.widthKm < 2 ||
-      view.widthKm > 20 ||
-      view.lat < 4 ||
-      view.lat > 22 ||
-      view.lon < 116 ||
-      view.lon > 127
-    )
-      throw new Error(
-        "Choose a view between 2 and 20 km wide within the Philippines.",
-      );
-    const distance = Math.hypot(
-      (view.lon - location.lon) *
-        111 *
-        Math.cos((location.lat * Math.PI) / 180),
-      (view.lat - location.lat) * 111,
-    );
-    if (distance > 30)
-      throw new Error("Search for a new location to explore farther.");
-    res
-      .set("Cache-Control", "no-store")
-      .json(await loadArea(location, view, controller.signal));
+    const data = await loadMap(req.body.token, req.body.view);
+    res.set("Cache-Control", "no-store").json(data);
   } catch (e) {
     if (!res.destroyed)
       res.status(e.name === "AbortError" ? 499 : 400).json({
