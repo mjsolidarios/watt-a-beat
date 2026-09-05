@@ -54,7 +54,17 @@ export function useMapArea(
               }
             : { signal: abort.signal },
         );
-        const data = await response.json();
+        const body = await response.text();
+        let data: { error?: string };
+        try {
+          data = JSON.parse(body);
+        } catch {
+          throw new Error(
+            response.ok
+              ? "The map service returned invalid data. Please retry."
+              : "The map service is unavailable. Please retry.",
+          );
+        }
         if (!response.ok)
           throw new Error(data.error || "Unable to load this area.");
         if (epoch !== generation.current) return;
