@@ -651,15 +651,7 @@ export function App() {
           >
             <SlidersHorizontal size={21} />
           </button>
-          <button
-            className="export-button"
-            disabled={loading || area.busy || !scene.mapData}
-            onClick={() => setModal(true)}
-            aria-label="Export video"
-            data-tooltip="Export video"
-          >
-            <ArrowUpRight size={17} />
-          </button>
+          {/* Export button hidden for now — separate export server planned */} 
         </div>
       </header>
       <main>
@@ -1277,7 +1269,8 @@ export function App() {
           </Modal>
         )}
       </main>
-      {modal && (
+      {/* Export UI hidden for now — separate export server planned in the future */
+      {false && modal && (
         <Modal onClose={() => setModal(false)} title="Export video">
           <p className="modal-description">
             Export your map and soundtrack as an MP4 video.
@@ -1418,9 +1411,8 @@ export function App() {
             </p>
             <p>
               Choose City lights, Christmas, Moonlight, or Rain in the bottom
-              bar. Export video saves the map and audio (as MP4 locally or WebM
-              in the browser), including rain or snow when enabled.
-            </p>
+              bar. Video export is planned for a future separate server.
+            </p> 
             <p>
               Districts group nearby streets for the lighting effect. They do
               not represent official boundaries or live power outages.
@@ -1434,7 +1426,7 @@ export function App() {
               >
                 OpenStreetMap contributors
               </a>
-              , ODbL. Audio preview and export use{" "}
+              , ODbL. Audio preview uses{" "}
               <a
                 href="https://www.remotion.dev/docs/player"
                 target="_blank"
