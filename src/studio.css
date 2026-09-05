@@ -350,19 +350,61 @@ main {
   left: 50%;
   transform: translateX(-50%);
   width: min(1010px, calc(100% - 260px));
-  padding: 12px 14px;
+  padding: 8px 10px;
   margin: 0;
   border-radius: 16px;
   display: grid;
-  grid-template-columns: 330px 176px minmax(220px, 1fr);
+  grid-template-columns: 180px 1fr auto;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
   border: 1px solid #2f3a32;
   background: #0f1613e6;
 }
+.track-row {
+  padding-right: 6px;
+}
+.waveform-row {
+  padding-right: 0;
+}
 .dock-themes {
-  padding-right: 20px;
-  border-right: 1px solid #546045;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0 0 0 8px;
+  border-top: 0;
+  border-left: 1px solid #546045;
+}
+.dock-themes .icon-button {
+  flex-shrink: 0;
+}
+.dock-themes .volume-button {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+}
+
+.dock-themes .themes {
+  gap: 4px;
+}
+.dock-themes .theme-option {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  gap: 0;
+  border-radius: 6px;
+}
+.dock-themes .theme-thumb {
+  width: 24px;
+  height: 24px;
+}
+.dock-themes .theme-thumb svg,
+.dock-themes .volume-button svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
 }
 .themes {
   display: grid;
@@ -437,7 +479,7 @@ main {
   display: none;
 }
 .waveform-row {
-  gap: 12px;
+  gap: 10px;
   margin: 0;
   min-width: 0;
 }
@@ -562,11 +604,18 @@ main {
 @media (max-width: 1250px) and (min-width: 901px) {
   .transport {
     width: calc(100% - 160px);
-    grid-template-columns: 275px 135px minmax(170px, 1fr);
-    gap: 14px;
+    grid-template-columns: 170px 1fr auto;
+    gap: 10px;
+  }
+  .track-row {
+    padding-right: 4px;
+  }
+  .waveform-row {
+    padding-right: 0;
   }
   .dock-themes {
-    padding-right: 14px;
+    padding-left: 4px;
+    border-left: 1px solid #546045;
   }
   .themes {
     gap: 5px;
@@ -643,15 +692,21 @@ main {
   .transport {
     width: min(660px, calc(100% - 36px));
     bottom: 22px;
-    grid-template-columns: 225px minmax(0, 1fr);
+    grid-template-columns: 180px 1fr;
     gap: 12px;
     padding: 11px 13px;
+  }
+  .waveform-row {
+    padding-right: 0;
   }
   .dock-themes {
     grid-column: 1 / -1;
     border: 0;
-    padding: 0 0 10px;
-    border-bottom: 1px solid #3c4a34;
+    padding: 10px 0 0;
+    border-top: 1px solid #3c4a34;
+    margin-top: 6px;
+    display: flex;
+    justify-content: flex-end;
   }
   .theme-option {
     min-height: 38px;
@@ -771,7 +826,11 @@ main {
   }
   .dock-themes {
     grid-column: 1;
-    padding-bottom: 10px;
+    padding-top: 8px;
+    border-top: 1px solid #3c4a34;
+    margin-top: 4px;
+    display: flex;
+    justify-content: flex-end;
   }
   .themes {
     gap: 6px;
@@ -808,6 +867,7 @@ main {
   }
   .waveform-row {
     gap: 11px;
+    padding-right: 0;
   }
   .timecode {
     font-size: 8px;

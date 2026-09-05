@@ -615,12 +615,6 @@ export function App() {
             </div>
           </div>
           <section className="transport" aria-label="Audio playback" ref={transportRef}>
-            <div className="dock-themes">
-              <ThemePicker
-                theme={scene.theme}
-                onChange={(theme) => update("theme", theme)}
-              />
-            </div>
             <div className="track-row">
               <div className="track-art">
                 <MusicNotes size={22} />
@@ -692,6 +686,8 @@ export function App() {
                 {formatTime(frame / 30)}
                 <span> / {formatTime(scene.duration)}</span>
               </span>
+            </div>
+            <div className="dock-themes">
               <button
                 className="icon-button volume-button"
                 aria-label={muted ? "Unmute" : "Mute"}
@@ -704,6 +700,10 @@ export function App() {
               >
                 {muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}
               </button>
+              <ThemePicker
+                theme={scene.theme}
+                onChange={(theme) => update("theme", theme)}
+              />
             </div>
             <div className="transport-footer">
               <span title="Best experienced with headphones">
