@@ -1,8 +1,8 @@
 # Watt a Beat
 
-**Let the city follow your sound.**
+**Music-reactive maps of the Philippines.**
 
-An interactive, music-reactive brownout map visualizer for Philippine locations. Drop in a track and watch districts light up to the beat — quiet passages cause brownouts, stronger moments restore power across the city.
+Load a track and watch Philippine streets light up with the music. Quiet passages dim the map; louder beats bring the lights back. Choose a lighting theme, switch districts on or off, and export the map with audio as an MP4.
 
 Built with React, Vite, Remotion, and OpenStreetMap data.
 

@@ -30,6 +30,7 @@ import { defaultScene, type SceneProps, type Theme } from "./types";
 import { analyzeSamples } from "./audio-analysis.mjs";
 import { useMapArea } from "./useMapArea";
 import { LocationSearch } from "./LocationSearch";
+import { TooltipLayer } from "./TooltipLayer";
 import gsap from "gsap";
 
 const formatTime = (s: number) =>
@@ -39,10 +40,10 @@ const formatTime = (s: number) =>
     .toString()
     .padStart(2, "0")}`;
 const themes: { id: Theme; name: string; desc: string }[] = [
-  { id: "midnight", name: "City lights", desc: "Warm & cinematic" },
-  { id: "christmas", name: "Christmas", desc: "A little holiday magic" },
-  { id: "moonlight", name: "Moonlight", desc: "Cool & understated" },
-  { id: "rain", name: "Rain", desc: "Rain over the city" },
+  { id: "midnight", name: "City lights", desc: "Amber street lights" },
+  { id: "christmas", name: "Christmas", desc: "Red and green lights with snow" },
+  { id: "moonlight", name: "Moonlight", desc: "Cool blue street lights" },
+  { id: "rain", name: "Rain", desc: "Blue lights with rain" },
 ];
 export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -72,7 +73,7 @@ export function App() {
   );
   const [track, setTrack] = useState({
     name: "After hours",
-    artist: "Original ambient demo",
+    artist: "Demo track",
     isDemo: true,
   });
   const [loading, setLoading] = useState(true),
@@ -115,7 +116,7 @@ export function App() {
         const buffer = await context.decodeAudioData(await blob.arrayBuffer());
         if (buffer.duration > 300)
           throw new Error(
-            "Choose a track under 5 minutes for this local studio.",
+            "Choose a track no longer than 5 minutes.",
           );
         const mono = new Float32Array(buffer.length);
         for (let c = 0; c < buffer.numberOfChannels; c++) {
@@ -137,7 +138,7 @@ export function App() {
         }));
         setTrack({
           name: name.replace(/\.[^.]+$/, ""),
-          artist: isDemo ? "Original ambient demo" : "Your soundtrack",
+          artist: isDemo ? "Demo track" : "Uploaded track",
           isDemo,
         });
         setFrame(0);
@@ -232,6 +233,7 @@ export function App() {
   }, [loading]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
+      if (e.defaultPrevented) return;
       if (
         e.code === "Space" &&
         !(
@@ -342,6 +344,7 @@ export function App() {
     !!job && ["uploading", "queued", "rendering"].includes(job.status);
   return (
     <div className="app-shell">
+      <TooltipLayer />
       <input
         ref={upload}
         type="file"
@@ -357,31 +360,30 @@ export function App() {
           <span className="brand-symbol">
             <Lightning size={25} weight="fill" />
           </span>
-          Watt a Beat
+          <span className="brand-copy">
+            <span className="brand-name">Watt a Beat</span>
+            <span className="brand-description">Music-reactive maps</span>
+          </span>
           <span className="brand-divider" />
-          <span className="brand-place" title={scene.mapData?.name}>
+          <span className="brand-place" data-tooltip={scene.mapData?.name}>
             {scene.mapData?.name ?? "Philippines"}
           </span>
         </a>
         <div className="header-right">
-          <span className="local-tag">
-            <span />
-            You control the power
-          </span>
           <button
             className="icon-button help-button"
             aria-label="How to use Watt a Beat"
-            title="How to use Watt a Beat"
+            data-tooltip="How to use Watt a Beat"
             onClick={() => setHelp(true)}
           >
             <Info size={20} />
           </button>
           <button
             className="icon-button settings-button"
-            aria-label="Visualizer settings"
+            aria-label="Map settings"
             aria-haspopup="dialog"
             aria-expanded={settingsOpen}
-            title="Visualizer settings"
+            data-tooltip="Map settings"
             onClick={() => setSettingsOpen(true)}
           >
             <SlidersHorizontal size={21} />
@@ -390,7 +392,8 @@ export function App() {
             className="export-button"
             disabled={loading || area.busy || !scene.mapData}
             onClick={() => setModal(true)}
-            title="Export video"
+            aria-label="Export video"
+            data-tooltip="Export video"
           >
             <ArrowUpRight size={17} />
           </button>
@@ -505,15 +508,15 @@ export function App() {
               className="map-upload"
               onClick={() => upload.current?.click()}
               disabled={loading}
-              title="MP3, WAV, M4A · up to 60 MB / 5 min"
+              data-tooltip="MP3, WAV, M4A · Up to 60 MB and 5 minutes"
             >
               <UploadSimple size={21} />
               <span>
                 {loading
-                  ? "Preparing your soundtrack…"
+                  ? "Loading audio…"
                   : dragging
-                    ? "Release to load your soundtrack"
-                    : "Drop your music anywhere on the map"}{" "}
+                    ? "Release to load audio"
+                    : "Drop an audio file on the map"}{" "}
                 <span className="browse-copy">
                   or <u>browse files</u>
                 </span>
@@ -538,7 +541,7 @@ export function App() {
             <div className="map-controls">
               <button
                 aria-label="Zoom in"
-                title="Zoom in"
+                data-tooltip="Zoom in"
                 disabled={
                   area.busy ||
                   !scene.mapData ||
@@ -551,7 +554,7 @@ export function App() {
               </button>
               <button
                 aria-label="Zoom out"
-                title="Zoom out"
+                data-tooltip="Zoom out"
                 disabled={
                   area.busy ||
                   !scene.mapData ||
@@ -565,7 +568,7 @@ export function App() {
               <span />
               <button
                 aria-label="Reset map view"
-                title="Reset map view"
+                data-tooltip="Reset map view"
                 onClick={() =>
                   setScene((s) => ({
                     ...s,
@@ -591,7 +594,7 @@ export function App() {
             <button
               className="fullscreen-button"
               aria-label="Fullscreen map"
-              title="Fullscreen map"
+              data-tooltip="Fullscreen map"
               onClick={() => {
                 player.current?.requestFullscreen();
               }}
@@ -621,7 +624,7 @@ export function App() {
               </div>
               <div className="track-details">
                 <strong>
-                  {loading ? "Preparing your soundtrack…" : track.name}
+                  {loading ? "Loading audio…" : track.name}
                 </strong>
                 <span>
                   {track.artist}
@@ -631,7 +634,7 @@ export function App() {
               <button
                 className="icon-button"
                 aria-label="Replace soundtrack"
-                title="Replace soundtrack"
+                data-tooltip="Replace soundtrack"
                 onClick={() => upload.current?.click()}
               >
                 <UploadSimple size={17} />
@@ -691,7 +694,7 @@ export function App() {
               <button
                 className="icon-button volume-button"
                 aria-label={muted ? "Unmute" : "Mute"}
-                title={muted ? "Unmute" : "Mute"}
+                data-tooltip={muted ? "Unmute" : "Mute"}
                 onClick={() => {
                   if (muted) player.current?.unmute();
                   else player.current?.mute();
@@ -706,7 +709,7 @@ export function App() {
               />
             </div>
             <div className="transport-footer">
-              <span title="Best experienced with headphones">
+              <span data-tooltip="Best experienced with headphones">
                 <Headphones size={13} />
               </span>
               <span>
@@ -715,7 +718,7 @@ export function App() {
             </div>
           </section>
           <div className="workspace-footer">
-            <span>The city’s power, set to your soundtrack.</span>
+            <span>A music-reactive map of the Philippines.</span>
             <span>
               Created with React + Remotion <ArrowUpRight size={12} />
             </span>
@@ -723,14 +726,14 @@ export function App() {
         </section>
         {settingsOpen && (
           <Modal
-            title="Visualizer settings"
+            title="Map settings"
             className="settings-modal"
             onClose={() => setSettingsOpen(false)}
           >
             <aside className="sidebar">
               <div className="panel-title">
                 <SlidersHorizontal size={19} />
-                <h2>Make it yours</h2>
+                <h2>Map settings</h2>
                 <button
                   className="text-button"
                   onClick={() =>
@@ -771,7 +774,7 @@ export function App() {
                     <UploadSimple size={21} />
                   </span>
                   <strong>
-                    {loading ? "Analyzing audio…" : "Drop your music here"}
+                    {loading ? "Analyzing audio…" : "Drop an audio file here"}
                   </strong>
                   <span>
                     or <u>browse files</u>
@@ -786,8 +789,8 @@ export function App() {
                 <div className="demo-note">
                   <span className="tiny-dot" />
                   {track.isDemo
-                    ? "An original demo is ready to play."
-                    : "Your soundtrack is ready."}
+                    ? "Demo track loaded."
+                    : "Audio loaded."}
                 </div>
               </section>
               <section
@@ -806,8 +809,8 @@ export function App() {
                       className={`theme-option ${scene.theme === theme.id ? "selected" : ""}`}
                       onClick={() => update("theme", theme.id)}
                       aria-pressed={scene.theme === theme.id}
-                      aria-label={`${theme.name} ${theme.desc}`}
-                      title={theme.desc}
+                      aria-label={theme.name}
+                      data-tooltip={`${theme.name}: ${theme.desc}`}
                     >
                       <span className={`theme-thumb ${theme.id}`}>
                         <span />
@@ -875,8 +878,8 @@ export function App() {
                     onChange={(e) => update("sensitivity", +e.target.value)}
                   />
                   <div className="range-labels">
-                    <span>Subtle</span>
-                    <span>Expressive</span>
+                    <span>Low</span>
+                    <span>High</span>
                   </div>
                 </div>
                 <Toggle
@@ -892,7 +895,7 @@ export function App() {
                       onChange={() => update("particles", !scene.particles)}
                     />
                     <p className="area-hint">
-                      Weather particles move during playback and video export.
+                      Rain and snow animate while the track plays and appear in exports.
                     </p>
                   </>
                 )}
@@ -952,9 +955,8 @@ export function App() {
               <div className="sidebar-note">
                 <Sparkle size={17} />
                 <p>
-                  Quiet track. Dark streets. Power on the beat.
-                  <br />
-                  <span>An artistic simulation of local power.</span>
+                  The lights follow your audio. This map does not show live
+                  power outages.
                 </p>
               </div>
             </aside>
@@ -962,7 +964,7 @@ export function App() {
         )}
       </main>
       {modal && (
-        <Modal onClose={() => setModal(false)} title="Export your brownout mix">
+        <Modal onClose={() => setModal(false)} title="Export video">
           <p className="modal-description">
             Export your map and soundtrack as an MP4 video.
           </p>
@@ -1009,8 +1011,8 @@ export function App() {
                   {job?.status === "uploading"
                     ? "Preparing audio…"
                     : job?.status === "queued"
-                      ? "Preparing the renderer…"
-                      : "Rendering your city…"}
+                      ? "Starting export…"
+                      : "Rendering video…"}
                 </span>
                 <span>{Math.round((job?.progress ?? 0) * 100)}%</span>
               </div>
@@ -1035,37 +1037,35 @@ export function App() {
             </div>
           ) : (
             <button className="primary-action" onClick={exportVideo}>
-              <ArrowUpRight size={18} /> Render video
+              <ArrowUpRight size={18} /> Export video
             </button>
           )}
-          <p className="modal-footnote">
-            Rendered locally with Remotion. Your music stays on this computer.
-          </p>
         </Modal>
       )}
       {help && (
         <Modal
           onClose={() => setHelp(false)}
-          title="Let the city follow your sound"
+          title="How to use Watt a Beat"
         >
           <div className="help-content">
             <p>
-              Press play or upload a soundtrack. Bass, midrange, and treble
-              restore power to different districts. Quiet passages cause
-              brownouts; stronger beats bring the street lights back.
+              Play the demo or load an audio file. Bass, midrange, and treble
+              light up different districts. Quiet passages dim the streets;
+              louder beats bring the lights back.
             </p>
             <p>
-              Toggle a district to disconnect it, or cut all power at once.
-              Reconnect districts to let them follow the music again. Click map
-              labels to focus the preview. Christmas adds red and green lights
-              with falling crystalline snowflakes. Rain adds cool lights and
-              drifting rain streaks. Weather moves during playback and is
-              included in video exports.
+              Search for a place in the Philippines, drag to pan, and scroll to
+              zoom. Click a map label to focus on a district. Use Map settings
+              to adjust the lights or cut power to individual districts.
             </p>
             <p>
-              Export video renders your map and audio as an MP4. District
-              lighting groups follow nearby street locations; they are artistic
-              zones, not official administrative boundaries.
+              Choose City lights, Christmas, Moonlight, or Rain in the bottom
+              bar. Export video saves the map and audio as an MP4, including
+              rain or snow when enabled.
+            </p>
+            <p>
+              Districts group nearby streets for the lighting effect. They do
+              not represent official boundaries or live power outages.
             </p>
             <p>
               Map data:{" "}
@@ -1174,8 +1174,8 @@ function ThemePicker({
           key={option.id}
           className={`theme-option ${theme === option.id ? "selected" : ""}`}
           aria-pressed={theme === option.id}
-          aria-label={`${option.name} ${option.desc}`}
-          title={option.desc}
+          aria-label={option.name}
+          data-tooltip={`${option.name}: ${option.desc}`}
           onClick={() => onChange(option.id)}
         >
           <span className={`theme-thumb ${option.id}`}>
@@ -1238,6 +1238,7 @@ function Modal({
           <button
             className="icon-button"
             aria-label="Close dialog"
+            data-tooltip="Close dialog"
             onClick={onClose}
           >
             <X size={20} />

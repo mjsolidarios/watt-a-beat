@@ -9,3 +9,6 @@ uploads/
 .agents/
 .claude/
 skills-lock.json
+test-results/
+.vercel
+

@@ -118,19 +118,6 @@ button:active:not(:disabled) {
   gap: 22px;
   align-items: center;
 }
-.local-tag {
-  font-size: 11px;
-  letter-spacing: 0.2px;
-  color: #a4ad9e;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: #161b17;
-}
-.local-tag > span,
 .tiny-dot {
   width: 5px;
   height: 5px;
@@ -178,49 +165,28 @@ button:active:not(:disabled) {
   transform: scale(0.96);
 }
 
-/* Glassy tooltip for icon buttons */
-.icon-button[title] {
-  position: relative;
-}
-.icon-button[title]::after {
-  content: attr(title);
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%) translateY(4px);
-  padding: 5px 9px;
-  font-size: 10px;
-  white-space: nowrap;
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 5px;
+/* Positioned in the viewport by TooltipLayer, including above dialogs. */
+.app-tooltip {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 8px 11px;
+  width: max-content;
+  max-width: min(260px, calc(100vw - 16px));
+  overflow-wrap: anywhere;
+  overflow: auto;
+  font: 400 11px/1.5 "Geist", system-ui, sans-serif;
+  letter-spacing: 0;
+  text-align: left;
+  white-space: normal;
   color: #e6e7e0;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.12s ease, transform 0.12s ease;
-  z-index: 100;
-  box-shadow: 0 4px 14px var(--glass-shadow);
-  backdrop-filter: blur(10px) saturate(120%);
+  background: #18221d;
+  border: 1px solid #455247;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px #0005;
+  z-index: 1000;
 }
-.icon-button[title]:hover::after {
-  opacity: 1;
-  transform: translateX(-50%) translateY(-3px);
-}
-.icon-button[title]:hover::before {
-  content: "";
-  position: absolute;
-  bottom: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: var(--glass-bg);
-  opacity: 0;
-  transition: opacity 0.12s ease;
-  z-index: 100;
-}
-.icon-button[title]:hover::before {
-  opacity: 1;
-}
+
 .app-shell {
   max-width: 1920px;
   margin: 0 auto;
@@ -609,6 +575,7 @@ h1 > span {
 }
 
 kbd {
+  font:
     8px "Geist Mono",
     monospace;
   padding: 2px 4px;
@@ -970,13 +937,14 @@ kbd {
 }
 .modal {
   width: min(460px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
   background: #171c18;
   color: #e5e8dd;
   border: 1px solid #2f3830;
   border-radius: 12px;
   padding: 0;
   box-shadow: 0 24px 90px rgba(0,0,0,0.55);
-  overflow: hidden;
+  overflow-y: auto;
 }
 
 .modal-content {
@@ -1180,9 +1148,6 @@ kbd {
   }
   .transport-footer {
     font-size: 8px;
-  }
-  .local-tag {
-    display: none;
   }
 }
 @media (max-width: 850px) {
