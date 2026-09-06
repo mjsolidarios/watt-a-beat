@@ -25,6 +25,7 @@ import {
   CloudRain,
   UploadSimple,
   X,
+  YoutubeLogo,
 } from "@phosphor-icons/react";
 import { MapScene } from "./MapScene";
 import { defaultScene, type ColorMode, type SceneProps, type Theme } from "./types";
@@ -48,6 +49,36 @@ const themes: { id: Theme; name: string; desc: string }[] = [
   { id: "moonlight", name: "Moonlight", desc: "Cool blue street lights" },
   { id: "rain", name: "Rain", desc: "Blue lights with rain" },
 ];
+
+function extractYoutubeId(url: string): string | null {
+  if (!url) return null;
+  const patterns = [
+    /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{11})/i,
+    /^([A-Za-z0-9_-]{11})$/,
+  ];
+  for (const re of patterns) {
+    const m = url.match(re);
+    if (m) return m[1];
+  }
+  return null;
+}
+
+function createSyntheticEnvelopes(durationSec: number): number[][] {
+  const frames = Math.max(1, Math.ceil(durationSec * 30));
+  const result: number[][] = [];
+  for (let f = 0; f < frames; f++) {
+    const t = f / 30;
+    // Rhythmic pulses to simulate music energy
+    const beatPhase = ((t * 2.13) % 1);
+    const bassPulse = Math.pow(Math.max(0, Math.sin(beatPhase * Math.PI * 2)), 2.2);
+    const groove = 0.5 + 0.5 * Math.sin(t * 0.65);
+    const bass = Math.min(1, 0.12 + bassPulse * (0.72 + groove * 0.22));
+    const mid = Math.min(1, 0.1 + (0.45 + 0.5 * Math.sin(t * 1.9 + 1)) * (0.38 + bassPulse * 0.25));
+    const treble = Math.min(1, 0.07 + Math.abs(Math.sin(t * 4.3)) * 0.32 + (Math.sin(t * 7.1) + 1) * 0.06);
+    result.push([bass, mid, treble]);
+  }
+  return result;
+}
 export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const panGesture = useRef<{
@@ -85,6 +116,11 @@ export function App() {
     [frame, setFrame] = useState(0),
     [muted, setMuted] = useState(false),
     [dragging, setDragging] = useState(false);
+  const [youtubeId, setYoutubeId] = useState<string | null>(null);
+  const [showYtInput, setShowYtInput] = useState(false);
+  const [ytUrlInput, setYtUrlInput] = useState("");
+  const ytPlayerRef = useRef<any>(null);
+  const ytSyncRaf = useRef<number>(0);
   const [modal, setModal] = useState(false),
     [help, setHelp] = useState(false),
     [resolution, setResolution] = useState("1080"),
@@ -110,6 +146,8 @@ export function App() {
     1,
     scene.envelopes.length || Math.round(scene.duration * 30),
   );
+  const totalFramesRef = useRef(totalFrames);
+  useEffect(() => { totalFramesRef.current = totalFrames; }, [totalFrames]);
   const {
     audio: previewAudio,
     toggle: toggleAudio,
@@ -122,6 +160,198 @@ export function App() {
     onPlaying: setPlaying,
     onError: setError,
   });
+
+  // YouTube playback helpers (audio sourced live from YouTube, no download/extract)
+  const ensureYoutubeApi = () =>
+    new Promise<void>((resolve, reject) => {
+      const w = window as any;
+      if (w.YT && w.YT.Player) {
+        resolve();
+        return;
+      }
+      const tag = document.createElement("script");
+      tag.src = "https://www.youtube.com/iframe_api";
+      const first = document.getElementsByTagName("script")[0];
+      first?.parentNode?.insertBefore(tag, first);
+      const prev = w.onYouTubeIframeAPIReady;
+      w.onYouTubeIframeAPIReady = () => {
+        if (prev) prev();
+        resolve();
+      };
+      tag.onerror = () => reject(new Error("YT API load failed"));
+      // safety timeout
+      setTimeout(() => {
+        if (w.YT && w.YT.Player) resolve();
+      }, 8000);
+    });
+
+  const stopYtSyncRef = useCallback(() => {
+    if (ytSyncRaf.current) {
+      cancelAnimationFrame(ytSyncRaf.current);
+      ytSyncRaf.current = 0;
+    }
+  }, []);
+  const syncFrameFromYt = useCallback(() => {
+    const p = ytPlayerRef.current;
+    if (!p || typeof p.getCurrentTime !== "function") return;
+    const t = p.getCurrentTime() || 0;
+    const tf = totalFramesRef.current || totalFrames;
+    const fr = Math.min(tf - 1, Math.max(0, Math.floor(t * 30)));
+    setFrame(fr);
+    player.current?.seekTo(fr);
+  }, [totalFrames]);
+  const startYtSync = useCallback(() => {
+    stopYtSyncRef();
+    const tick = () => {
+      syncFrameFromYt();
+      ytSyncRaf.current = requestAnimationFrame(tick);
+    };
+    ytSyncRaf.current = requestAnimationFrame(tick);
+  }, [stopYtSyncRef, syncFrameFromYt]);
+
+  const loadYoutube = useCallback(async (rawUrl: string) => {
+    const id = extractYoutubeId(rawUrl.trim());
+    if (!id) {
+      setError("Enter a valid YouTube URL (youtu.be or youtube.com).");
+      return;
+    }
+    const loadToken = ++loadId.current;
+    setLoading(true);
+    setError("");
+    setShowYtInput(false);
+    setYtUrlInput("");
+    previewAudio.current?.pause();
+    stopYtSyncRef();
+    // teardown previous YT
+    if (ytPlayerRef.current) {
+      try { ytPlayerRef.current.destroy?.(); } catch {}
+      ytPlayerRef.current = null;
+    }
+    // teardown file
+    if (blobUrl.current) {
+      URL.revokeObjectURL(blobUrl.current);
+      blobUrl.current = "";
+    }
+    audioBytes.current = null;
+    setYoutubeId(id);
+    setTrack({ name: "Loading YouTube…", artist: "YouTube", isDemo: false });
+    // provisional scene (synthetic reactivity)
+    const provisionalDur = 120;
+    setScene((s) => ({
+      ...s,
+      audioSrc: "",
+      envelopes: createSyntheticEnvelopes(provisionalDur),
+      duration: provisionalDur,
+    }));
+    setFrame(0);
+    player.current?.seekTo(0);
+
+    // Ensure YT IFrame API is ready
+    try {
+      await ensureYoutubeApi();
+    } catch {
+      if (loadToken === loadId.current) {
+        setError("Could not load YouTube player.");
+        setLoading(false);
+      }
+      return;
+    }
+
+    // Find or create offscreen container for the player (we only need its audio)
+    let container = document.getElementById("yt-audio-host");
+    if (!container) {
+      container = document.createElement("div");
+      container.id = "yt-audio-host";
+      container.style.position = "absolute";
+      container.style.width = "1px";
+      container.style.height = "1px";
+      container.style.left = "-9999px";
+      container.style.top = "-9999px";
+      document.body.appendChild(container);
+    }
+
+    // Create the player
+    try {
+      ytPlayerRef.current = new (window as any).YT.Player("yt-audio-host", {
+        height: "1",
+        width: "1",
+        videoId: id,
+        playerVars: {
+          autoplay: 0,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          modestbranding: 1,
+          rel: 0,
+          iv_load_policy: 3,
+        },
+        events: {
+          onReady: (ev: any) => {
+            if (loadToken !== loadId.current) return;
+            const p = ev.target;
+            let dur = 0;
+            try { dur = p.getDuration() || 0; } catch {}
+            dur = Math.min(Math.max(dur || 120, 10), 600); // cap at 10 min
+            const data = p.getVideoData?.() || {};
+            const title = data.title || "YouTube audio";
+            const author = data.author || "YouTube";
+            setTrack({ name: title, artist: author, isDemo: false });
+            const envs = createSyntheticEnvelopes(dur);
+            setScene((s) => ({
+              ...s,
+              audioSrc: "",
+              envelopes: envs,
+              duration: dur,
+            }));
+            setFrame(0);
+            player.current?.seekTo(0);
+            if (muted) { try { p.mute?.(); } catch {} }
+            setLoading(false);
+          },
+          onStateChange: (ev: any) => {
+            if (loadToken !== loadId.current) return;
+            const YT = (window as any).YT;
+            const state = ev.data;
+            if (state === YT.PlayerState.PLAYING) {
+              setPlaying(true);
+              startYtSync();
+            } else if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.ENDED || state === YT.PlayerState.BUFFERING) {
+              setPlaying(false);
+              stopYtSyncRef();
+              syncFrameFromYt();
+            }
+          },
+          onError: (ev: any) => {
+            if (loadToken !== loadId.current) return;
+            setError("YouTube player error (video may be unavailable or restricted).");
+            setLoading(false);
+            setYoutubeId(null);
+          },
+        },
+      });
+    } catch (e) {
+      if (loadToken === loadId.current) {
+        setError("Failed to initialize YouTube playback.");
+        setLoading(false);
+        setYoutubeId(null);
+      }
+    }
+  }, [stopYtSyncRef, startYtSync, syncFrameFromYt]);
+
+  // Keep YT volume in sync with mute toggle
+  useEffect(() => {
+    const p = ytPlayerRef.current;
+    if (!p || !youtubeId) return;
+    try {
+      if (muted) {
+        p.mute?.();
+      } else {
+        p.unMute?.();
+        p.setVolume?.(100);
+      }
+    } catch {}
+  }, [muted, youtubeId]);
+
   const update = <K extends keyof SceneProps>(key: K, value: SceneProps[K]) =>
     setScene((s) => ({ ...s, [key]: value }));
   const loadAudio = useCallback(
@@ -130,6 +360,13 @@ export function App() {
       setLoading(true);
       setError("");
       previewAudio.current?.pause();
+      // Switch away from YouTube source
+      setYoutubeId(null);
+      if (ytPlayerRef.current) {
+        try { ytPlayerRef.current.destroy?.(); } catch {}
+        ytPlayerRef.current = null;
+      }
+      stopYtSyncRef();
       let context: AudioContext | undefined;
       try {
         if (blob.size > 60 * 1024 * 1024)
@@ -214,8 +451,13 @@ export function App() {
     () => () => {
       loadId.current++;
       if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
+      stopYtSyncRef();
+      if (ytPlayerRef.current) {
+        try { ytPlayerRef.current.destroy?.(); } catch {}
+        ytPlayerRef.current = null;
+      }
     },
-    [],
+    [stopYtSyncRef],
   );
   // GSAP entrance for floating transport (studio glassy dock)
   useEffect(() => {
@@ -242,8 +484,32 @@ export function App() {
     });
   }, [playing, loading]);
   const togglePlay = useCallback(() => {
-    if (!loading) toggleAudio();
-  }, [loading, toggleAudio]);
+    if (loading) return;
+    if (youtubeId && ytPlayerRef.current) {
+      const p = ytPlayerRef.current;
+      const YT = (window as any).YT;
+      const st = p.getPlayerState ? p.getPlayerState() : 0;
+      if (st === (YT?.PlayerState?.PLAYING ?? 1)) {
+        p.pauseVideo();
+      } else {
+        p.playVideo();
+      }
+      return;
+    }
+    toggleAudio();
+  }, [loading, youtubeId, toggleAudio]);
+
+  const seekToFrame = useCallback((requested: number) => {
+    const fr = Math.max(0, Math.min(totalFrames - 1, requested));
+    if (youtubeId && ytPlayerRef.current) {
+      const p = ytPlayerRef.current;
+      p.seekTo(fr / 30, true);
+      setFrame(fr);
+      player.current?.seekTo(fr);
+      return;
+    }
+    seekAudio(fr);
+  }, [youtubeId, totalFrames, seekAudio]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -768,7 +1034,7 @@ export function App() {
               className="map-upload"
               onClick={() => upload.current?.click()}
               disabled={loading}
-              data-tooltip="MP3, WAV, M4A · Up to 60 MB and 5 minutes"
+              data-tooltip="Audio file (MP3/WAV/etc) or click YouTube icon for video link"
             >
               <UploadSimple size={21} />
               <span>
@@ -778,7 +1044,7 @@ export function App() {
                     ? "Release to load audio"
                     : "Drop an audio file on the map"}{" "}
                 <span className="browse-copy">
-                  or <u>browse files</u>
+                  or <u>browse files</u> · <u>YouTube</u>
                 </span>
               </span>
             </button>
@@ -889,6 +1155,7 @@ export function App() {
                 <span>
                   {track.artist}
                   {track.isDemo && <span className="demo-tag">DEMO</span>}
+                  {youtubeId && <span className="demo-tag" style={{borderColor:"#9a6b4a",color:"#d4a67f"}}>YOUTUBE</span>}
                 </span>
               </div>
               <button
@@ -899,7 +1166,90 @@ export function App() {
               >
                 <UploadSimple size={17} />
               </button>
+              <button
+                className="icon-button"
+                aria-label="Load from YouTube"
+                data-tooltip="Load audio from a YouTube video URL"
+                onClick={() => {
+                  setShowYtInput((v) => {
+                    const next = !v;
+                    if (next) setYtUrlInput("");
+                    return next;
+                  });
+                }}
+              >
+                <YoutubeLogo size={17} />
+              </button>
             </div>
+            {showYtInput && (
+              <div
+                style={{
+                  gridColumn: "1 / -1",
+                  display: "flex",
+                  gap: 8,
+                  alignItems: "center",
+                  margin: "8px 0 4px",
+                  padding: "6px 8px",
+                  background: "#0f1613",
+                  border: "1px solid #3a4639",
+                  borderRadius: 8,
+                }}
+              >
+                <input
+                  type="text"
+                  value={ytUrlInput}
+                  onChange={(e) => setYtUrlInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void loadYoutube(ytUrlInput);
+                    }
+                    if (e.key === "Escape") {
+                      setShowYtInput(false);
+                    }
+                  }}
+                  placeholder="https://youtube.com/watch?v=... or youtu.be/..."
+                  style={{
+                    flex: 1,
+                    background: "transparent",
+                    border: "none",
+                    color: "inherit",
+                    fontSize: 12,
+                    outline: "none",
+                  }}
+                  autoFocus
+                />
+                <button
+                  onClick={() => void loadYoutube(ytUrlInput)}
+                  disabled={!ytUrlInput.trim() || loading}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 10px",
+                    borderRadius: 6,
+                    border: "1px solid #5c6b52",
+                    background: "#1f2923",
+                    color: "#d9e3d0",
+                  }}
+                >
+                  Load
+                </button>
+                <button
+                  onClick={() => {
+                    setShowYtInput(false);
+                    setYtUrlInput("");
+                  }}
+                  style={{
+                    fontSize: 11,
+                    padding: "4px 8px",
+                    borderRadius: 6,
+                    border: "1px solid #3a4639",
+                    background: "transparent",
+                    color: "#a3ac9f",
+                  }}
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
             <div className="waveform-row">
               <button
                 ref={playBtnRef}
@@ -935,7 +1285,7 @@ export function App() {
                   max={totalFrames - 1}
                   value={frame}
                   aria-label="Playback position"
-                  onChange={(e) => seekAudio(Number(e.target.value))}
+                  onChange={(e) => seekToFrame(Number(e.target.value))}
                 />
                 <div
                   className="playhead"
@@ -953,7 +1303,14 @@ export function App() {
                 aria-label={muted ? "Unmute" : "Mute"}
                 data-tooltip={muted ? "Unmute" : "Mute"}
                 onClick={() => {
-                  setMuted(!muted);
+                  const next = !muted;
+                  setMuted(next);
+                  if (youtubeId && ytPlayerRef.current) {
+                    try {
+                      ytPlayerRef.current.setVolume?.(next ? 0 : 100);
+                      if (next) ytPlayerRef.current.mute?.(); else ytPlayerRef.current.unMute?.();
+                    } catch {}
+                  }
                 }}
               >
                 {muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}
@@ -1328,9 +1685,11 @@ export function App() {
         >
           <div className="help-content">
             <p>
-              Play the demo or load an audio file. Bass, midrange, and treble
-              light up different districts. Quiet passages dim the streets;
-              louder beats bring the lights back.
+              Play the demo or load an audio file (or paste a YouTube URL). The
+              audio is sourced directly from YouTube when you use a video link —
+              no download or extraction. Bass, midrange, and treble light up
+              different districts. Quiet passages dim the streets; louder beats
+              bring the lights back. (YouTube uses simulated beat response.)
             </p>
             <p>
               Search for a place in the Philippines, drag to pan, and scroll to
