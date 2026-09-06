@@ -31,6 +31,7 @@ import { defaultScene, type ColorMode, type SceneProps, type Theme } from "./typ
 import { analyzeSamples } from "./audio-analysis.mjs";
 import { isLightColor } from "./scene-effects.mjs";
 import { useMapArea } from "./useMapArea";
+import { useAudioPlayback } from "./useAudioPlayback";
 import { LocationSearch } from "./LocationSearch";
 import { TooltipLayer } from "./TooltipLayer";
 import gsap from "gsap";
@@ -105,6 +106,22 @@ export function App() {
     transportRef = useRef<HTMLElement>(null),
     playBtnRef = useRef<HTMLButtonElement>(null),
     focusChipRef = useRef<HTMLButtonElement>(null);
+  const totalFrames = Math.max(
+    1,
+    scene.envelopes.length || Math.round(scene.duration * 30),
+  );
+  const {
+    audio: previewAudio,
+    toggle: toggleAudio,
+    seek: seekAudio,
+  } = useAudioPlayback({
+    src: scene.audioSrc,
+    totalFrames,
+    player,
+    onFrame: setFrame,
+    onPlaying: setPlaying,
+    onError: setError,
+  });
   const update = <K extends keyof SceneProps>(key: K, value: SceneProps[K]) =>
     setScene((s) => ({ ...s, [key]: value }));
   const loadAudio = useCallback(
@@ -112,7 +129,7 @@ export function App() {
       const id = ++loadId.current;
       setLoading(true);
       setError("");
-      player.current?.pause();
+      previewAudio.current?.pause();
       let context: AudioContext | undefined;
       try {
         if (blob.size > 60 * 1024 * 1024)
@@ -131,9 +148,7 @@ export function App() {
         }
         const envelopes = analyzeSamples(mono, buffer.sampleRate);
         if (id !== loadId.current) return;
-        // Use exact frame count from analysis to avoid duration mismatch
-        // between decoded buffer and number of envelopes. This prevents
-        // audio glitches/repeats at loop points or seek boundaries.
+        // Keep the composition length aligned with the analyzed audio frames.
         const duration = envelopes.length / 30;
         const url = URL.createObjectURL(blob);
         if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
@@ -173,6 +188,7 @@ export function App() {
   );
   useEffect(() => {
     let active = true;
+    const initialLoadId = loadId.current;
     fetch("/after-hours.wav")
       .then((r) => {
         if (!r.ok)
@@ -180,10 +196,12 @@ export function App() {
         return r.blob();
       })
       .then((b) => {
-        if (active) void loadAudio(b, "After hours", true);
+        if (active && loadId.current === initialLoadId) {
+          void loadAudio(b, "After hours", true);
+        }
       })
       .catch((e) => {
-        if (active) {
+        if (active && loadId.current === initialLoadId) {
           setError(e.message);
           setLoading(false);
         }
@@ -194,29 +212,11 @@ export function App() {
   }, [loadAudio]);
   useEffect(
     () => () => {
+      loadId.current++;
       if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
     },
     [],
   );
-  useEffect(() => {
-    const p = player.current;
-    if (!p) return;
-    const onFrame = ({ detail }: { detail: { frame: number } }) =>
-      setFrame(detail.frame);
-    const play = () => setPlaying(true),
-      pause = () => setPlaying(false);
-    p.addEventListener("frameupdate", onFrame);
-    p.addEventListener("play", play);
-    p.addEventListener("pause", pause);
-    p.addEventListener("ended", pause);
-    return () => {
-      p.removeEventListener("frameupdate", onFrame);
-      p.removeEventListener("play", play);
-      p.removeEventListener("pause", pause);
-      p.removeEventListener("ended", pause);
-    };
-  }, []);
-
   // GSAP entrance for floating transport (studio glassy dock)
   useEffect(() => {
     const el = transportRef.current;
@@ -242,8 +242,8 @@ export function App() {
     });
   }, [playing, loading]);
   const togglePlay = useCallback(() => {
-    if (!loading) player.current?.toggle();
-  }, [loading]);
+    if (!loading) toggleAudio();
+  }, [loading, toggleAudio]);
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -309,12 +309,8 @@ export function App() {
     [],
   );
   const inputProps = useMemo(
-    () => ({ ...scene, onSelect: selectDistrict, branding: false }),
+    () => ({ ...scene, audioSrc: "", onSelect: selectDistrict, branding: false }),
     [scene, selectDistrict],
-  );
-  const totalFrames = Math.max(
-    1,
-    scene.envelopes.length || Math.round(scene.duration * 30),
   );
   const waveform = useMemo(
     () =>
@@ -537,9 +533,7 @@ export function App() {
       recorder.start();
 
       // Pause normal playback and take control
-      if (playing) {
-        player.current?.toggle();
-      }
+      previewAudio.current?.pause();
       player.current?.seekTo(0);
 
       // Start audio (muted visually if needed, but we capture the stream)
@@ -610,6 +604,16 @@ export function App() {
   return (
     <div className="app-shell">
       <TooltipLayer />
+      <audio
+        ref={previewAudio}
+        src={scene.audioSrc || undefined}
+        preload="auto"
+        loop
+        muted={muted}
+        onError={() =>
+          setError("This audio could not be played. Try another MP3 or WAV file.")
+        }
+      />
       <input
         ref={upload}
         type="file"
@@ -732,7 +736,7 @@ export function App() {
                 controls={false}
                 clickToPlay={false}
                 spaceKeyToPlayOrPause={false}
-                loop
+                numberOfSharedAudioTags={0}
                 acknowledgeRemotionLicense
               />
             </div>
@@ -931,10 +935,7 @@ export function App() {
                   max={totalFrames - 1}
                   value={frame}
                   aria-label="Playback position"
-                  onChange={(e) => {
-                    player.current?.seekTo(Number(e.target.value));
-                    setFrame(Number(e.target.value));
-                  }}
+                  onChange={(e) => seekAudio(Number(e.target.value))}
                 />
                 <div
                   className="playhead"
@@ -952,8 +953,6 @@ export function App() {
                 aria-label={muted ? "Unmute" : "Mute"}
                 data-tooltip={muted ? "Unmute" : "Mute"}
                 onClick={() => {
-                  if (muted) player.current?.unmute();
-                  else player.current?.mute();
                   setMuted(!muted);
                 }}
               >

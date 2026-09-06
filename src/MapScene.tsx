@@ -76,6 +76,7 @@ export function MapScene(props: SceneProps) {
         height="100%"
         style={{ overflow: "hidden" }}
         aria-label={`Music-reactive brownout map of ${map.name}`}
+        data-frame={frame}
         data-map-id={map.id}
         data-map-name={map.name}
         data-road-count={map.roadCount}
