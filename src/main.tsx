@@ -9,6 +9,7 @@ import { App } from "./App";
 import "./styles.css";
 import "./studio.css";
 import "./experience.css";
+import "./glass.css";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <IconContext.Provider value={{ weight: "fill" }}>
