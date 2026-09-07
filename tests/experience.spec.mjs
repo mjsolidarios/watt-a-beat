@@ -177,7 +177,7 @@ test("starting choices and YouTube status, validation, retry and demo recovery",
   await expect(source.getByRole("alert")).toHaveCount(0);
   await page.getByRole("button", { name: "Export video", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText(
-    "YouTube video exports are silent",
+    "With no audio files, exports are silent",
   );
   await page.getByRole("button", { name: "Close dialog" }).click();
   await page.getByRole("button", { name: "Switch to mini player" }).click();
@@ -204,7 +204,9 @@ test("starting choices and YouTube status, validation, retry and demo recovery",
   ).toBeVisible();
   expect(choosers).toBe(0);
   const chooser = page.waitForEvent("filechooser");
-  await page.getByRole("button", { name: "Upload audio", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Add audio files", exact: true })
+    .click();
   await chooser;
   expect(choosers).toBe(1);
 });
@@ -334,11 +336,13 @@ for (const format of ["webm", "mp4"])
       miniMap.districts.length,
     );
     await page.getByRole("button", { name: "Rain", exact: true }).click();
-    await page.locator('input[type="file"]').setInputFiles({
-      name: "one-second.wav",
-      mimeType: "audio/wav",
-      buffer: wav(),
-    });
+    await page.locator('input[type="file"]').setInputFiles([
+      { name: "one-second.wav", mimeType: "audio/wav", buffer: wav() },
+      { name: "second-layer.wav", mimeType: "audio/wav", buffer: wav() },
+    ]);
+    await expect(
+      page.getByText("2 sources · Your mix", { exact: true }),
+    ).toBeVisible();
     await expect(
       page.getByRole("button", { name: "Play", exact: true }),
     ).toBeEnabled();

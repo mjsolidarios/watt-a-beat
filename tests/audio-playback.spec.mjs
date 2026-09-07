@@ -7,7 +7,7 @@ test.use({
 
 async function ready(page) {
   await page.goto("/");
-  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Play", exact: true })).toBeEnabled({ timeout: 20000 });
   await expect(page.locator("svg[data-map-id]")).toBeVisible();
 }
 

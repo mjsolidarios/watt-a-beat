@@ -732,3 +732,175 @@
     }
   }
 }
+
+/* The mixer uses a dialog so a long source list never covers the map controls. */
+.mix-summary {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 10px 0 0;
+  border: 0;
+  background: transparent;
+  color: #c8d6ad;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.mix-summary > span {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #a7b29e;
+}
+.mix-summary:hover {
+  color: #efffba;
+}
+.mix-sources {
+  margin: 20px 0;
+}
+.mix-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12px;
+}
+.mix-heading span {
+  color: #a7b29e;
+}
+.mix-sources ul {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  max-height: 230px;
+  overflow-y: auto;
+}
+.mix-sources li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
+  border-bottom: 1px solid #344033;
+  font-size: 13px;
+}
+.mix-sources li > svg {
+  flex: 0 0 auto;
+  color: #c8d6ad;
+}
+.mix-sources li > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mix-sources li button {
+  flex: 0 0 auto;
+  min-width: 36px;
+  min-height: 36px;
+}
+.mix-levels {
+  display: grid;
+  gap: 12px;
+  margin-top: 20px;
+}
+.mix-levels label {
+  display: grid;
+  grid-template-columns: 105px minmax(40px, 1fr) 38px;
+  align-items: center;
+  gap: 12px;
+  font-size: 12px;
+}
+.mix-levels input {
+  width: 100%;
+  margin: 0;
+  accent-color: #d4eaa1;
+}
+.mix-levels output {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #c8d6ad;
+}
+.mix-sources p {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #a7b29e;
+  margin-top: 18px;
+}
+.mix-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 22px;
+}
+.mix-actions .primary-action {
+  width: auto;
+  min-height: 42px;
+  padding: 10px 16px;
+}
+.brand-symbol {
+  position: relative;
+}
+.brand-symbol::before {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  background: radial-gradient(circle, #d8fba94d, #d8fba900 72%);
+  opacity: 0;
+  transition: opacity 250ms ease;
+  pointer-events: none;
+}
+.brand-symbol .brand-logo {
+  transition: filter 250ms ease;
+}
+.brand-symbol.is-playing::before {
+  opacity: 1;
+  animation: logo-halo 1.6s ease-in-out infinite;
+}
+.brand-symbol.is-playing .brand-logo {
+  filter: drop-shadow(0 0 5px #d8fba999) drop-shadow(0 0 12px #b8e57466);
+  animation: logo-beat 800ms ease-in-out infinite;
+}
+@keyframes logo-beat {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.12) rotate(-3deg);
+  }
+  65% {
+    transform: scale(1.04) rotate(2deg);
+  }
+}
+@keyframes logo-halo {
+  0%,
+  100% {
+    transform: scale(0.85);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brand-symbol.is-playing::before,
+  .brand-symbol.is-playing .brand-logo {
+    animation: none;
+  }
+  .brand-symbol .brand-logo,
+  .brand-symbol::before {
+    transition: none;
+  }
+}
+.mix-guidance {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #a7b29e;
+}

@@ -13,11 +13,12 @@ Built with React, Vite, Remotion, and OpenStreetMap data.
 - 🏘️ **Building footprints** — Mapped buildings light up with their district’s streets, using the chosen color and music response in both preview and MP4 exports
 - 🗺️ **Philippine map search** — Search cities, towns, and landmarks via Photon + OpenStreetMap
 - 🎥 **Browser video export** — Render MP4 or WebM on your device with `@remotion/web-renderer`, including progress, cancellation, and download
-- **Starting choices** — Play the included demo, upload audio, or paste a YouTube video URL
+- **Music mixer** — Add up to 8 audio files and a YouTube video to play together, with shared play/pause/seek and separate audio/YouTube volume controls
 - **Surprise me + Undo** — Explore another Philippine place with randomized lighting, then restore the previous scene without changing music
 - **District tap modes** — Send a light ripple, focus a district, or toggle its power
 - **Visible-area 3D** — Raise buildings across all visible districts into blocks with music-reactive roofs and windows. Only the loaded map area is used; heights are illustrative.
-- **YouTube feedback** — Visible player, video details, simulated-rhythm explanation, loading timeout, and retry
+- **YouTube feedback** — Visible player, video details, loading timeout, retry, and synchronized buffering. Lights follow the combined local audio, or a simulated rhythm for YouTube alone.
+- **Playing logo** — The app logo pulses and glows during playback; reduced-motion preferences keep a steady glow.
 - ✨ **Modern glassy UI** — Icon-only controls with tooltips, GSAP animations, smooth interactions
 - 📱 **Responsive** — Works in desktop and mobile viewports
 - ♿ **Accessible** — Proper ARIA labels, keyboard support (space to play/pause)
@@ -40,12 +41,12 @@ An original ambient demo track is included. Drop your own MP3, WAV, or M4A (up t
 
 ## How to Use
 
-1. **Choose music** — Select Play demo, Upload audio, or Paste YouTube URL. Drag and drop also accepts audio files. YouTube uses a simulated rhythm; uploaded audio drives real beat response.
+1. **Choose music** — Select Add audio files (multiple selection and drag-and-drop supported), then Paste YouTube URL to layer a video alongside them. Open Your mix to remove sources and adjust audio/YouTube volume. Up to 8 local files, each at most 60 MB and 5 minutes. The first user source replaces the demo; further files are additive. All sources start together, shorter sources finish, and the entire mix loops at the end of the longest source. Editing sources pauses and resets the mix. Uploaded audio drives real beat response; YouTube alone uses a simulated rhythm. YouTube synchronization is approximate because iframe playback is independently buffered.
 2. **Choose an atmosphere** — Switch between City lights, Christmas, Moonlight, or Rain in the floating dock.
 3. **Adjust & explore** — Open settings (sliders icon) to tweak intensity, sensitivity, toggle map labels, weather particles, or disconnect districts.
 4. **Pan & zoom** — Drag the map to pan. Use the zoom and reset buttons in the bottom-right.
 5. **Play with the map** — Select Ripple, Focus, or Power and tap a district label. Surprise me changes your place and lighting; Undo restores the previous visual settings.
-6. **Export** — Click Export video → choose MP4 or WebM, resolution, and duration → Create video → Download video. Rendering happens in the browser; no audio upload or render server is used. YouTube exports are silent. Preview mute does not mute exported audio.
+6. **Export** — Click Export video → choose MP4 or WebM, resolution, and duration → Create video → Download video. Rendering happens in the browser; no audio upload or render server is used. Exports include the combined local audio files; YouTube sound is excluded. YouTube-only exports are silent. Preview volume and mute do not change exported audio.
 
 Use **3D buildings** to raise buildings across the visible districts. Power mode toggles each district independently by tapping its roofs or walls. Panning, zooming, and loading another place keep the 3D setting; only buildings in the current view are rendered. The 3D view is included in video exports.
 
@@ -70,6 +71,8 @@ src/
   ExportScene.tsx      # Export composition with @remotion/media audio
   useVideoExport.ts    # Browser rendering, compatibility, progress, cancellation
   useSurprise.ts       # Random location and lighting with visual-only Undo
+  audio-mix.mjs       # Local PCM mixing and WAV encoding
+  useMixPlayback.ts  # Shared transport and longest-source media clock
   youtube.mjs         # URL validation and recoverable YouTube API loading
   audio-analysis.mjs   # Real-time + export audio envelope extraction
   scene-effects.mjs    # District lighting + particle logic
@@ -92,7 +95,7 @@ Video exports use WebCodecs through `@remotion/web-renderer`. Browser support is
 Run the browser feature and real export checks with the studio running:
 
 ```bash
-CHROME_BIN=/usr/bin/google-chrome npx playwright test tests/experience.spec.mjs --workers=1
+CHROME_BIN=/usr/bin/google-chrome npx playwright test tests/audio-mix.spec.mjs tests/audio-playback.spec.mjs tests/experience.spec.mjs --workers=1
 ```
 
 Omit `CHROME_BIN` to use Playwright’s installed Chromium. `TEST_BASE_URL` selects a different local server. The checks cover source choices, YouTube error recovery, Surprise/Undo, district interactions, mobile layout, and a decoded browser export with audio.
