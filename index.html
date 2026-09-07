@@ -16,30 +16,155 @@
     />
     <meta name="theme-color" content="#111514" />
     <meta name="color-scheme" content="dark" />
-    <link
-      rel="icon"
-      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%23111514'/><path d='M36 6 14 36h14l-2 22 22-30H34z' fill='%23dfc48d'/></svg>"
-    />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Watt a Beat" />
     <meta property="og:locale" content="en_US" />
-    <meta
-      property="og:title"
-      content="Watt a Beat · Music-reactive maps"
-    />
+    <meta property="og:title" content="Watt a Beat · Music-reactive maps" />
     <meta
       property="og:description"
       content="Create music-reactive maps of the Philippines. Load a track, control district lights, choose rain or snow, and export your map as an MP4."
     />
     <meta name="twitter:card" content="summary" />
-    <meta
-      name="twitter:title"
-      content="Watt a Beat · Music-reactive maps"
-    />
+    <meta name="twitter:title" content="Watt a Beat · Music-reactive maps" />
     <meta
       name="twitter:description"
       content="Create music-reactive maps of the Philippines. Load a track, control district lights, choose rain or snow, and export your map as an MP4."
     />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #111514;
+        color: #e6e7e0;
+      }
+      .app-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: grid;
+        place-items: center;
+        background: #111514;
+        pointer-events: none;
+        transition: opacity 0.55s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+      .app-splash-inner {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 22px;
+      }
+      .app-splash-mark {
+        position: relative;
+        width: 92px;
+        height: 92px;
+      }
+      .app-splash-logo {
+        width: 92px;
+        height: 92px;
+        display: block;
+        animation: splash-mark 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
+      }
+      .app-splash-shimmer {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          110deg,
+          transparent 25%,
+          rgba(255, 255, 255, 0.08) 40%,
+          rgba(255, 255, 255, 0.75) 50%,
+          rgba(255, 255, 255, 0.08) 60%,
+          transparent 75%
+        );
+        background-size: 220% 100%;
+        background-position: 130% 0;
+        -webkit-mask-image: url("/app-logo.svg");
+        mask-image: url("/app-logo.svg");
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-repeat: no-repeat;
+        mask-repeat: no-repeat;
+        -webkit-mask-position: center;
+        mask-position: center;
+        animation: splash-shimmer 1.8s ease-in-out 0.55s infinite;
+      }
+      .app-splash-name {
+        margin: 0;
+        font-family: Geist, system-ui, sans-serif;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: -0.7px;
+        color: #f3ead2;
+        background: linear-gradient(
+          100deg,
+          #bba56c 12%,
+          #f3ead2 38%,
+          #fffdf4 50%,
+          #f3ead2 62%,
+          #bba56c 88%
+        );
+        background-size: 220% 100%;
+        background-position: 100% 0;
+        -webkit-background-clip: text;
+        background-clip: text;
+        -webkit-text-fill-color: transparent;
+        animation:
+          splash-name 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both,
+          splash-shimmer 1.8s ease-in-out 0.55s infinite;
+      }
+      .app-splash.is-leaving {
+        opacity: 0;
+      }
+      @keyframes splash-mark {
+        from {
+          opacity: 0;
+          transform: scale(0.92);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes splash-name {
+        from {
+          opacity: 0;
+          transform: translateY(8px);
+        }
+        to {
+          opacity: 1;
+          transform: none;
+        }
+      }
+      @keyframes splash-shimmer {
+        0%,
+        12% {
+          background-position: 130% 0;
+        }
+        88%,
+        100% {
+          background-position: -30% 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .app-splash-logo,
+        .app-splash-name,
+        .app-splash-shimmer {
+          animation: none;
+        }
+        .app-splash-name {
+          background: none;
+          -webkit-text-fill-color: #f3ead2;
+          color: #f3ead2;
+        }
+        .app-splash-shimmer {
+          display: none;
+        }
+        .app-splash {
+          transition-duration: 0.15s;
+        }
+      }
+    </style>
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -59,6 +184,26 @@
     </script>
   </head>
   <body>
+    <div
+      id="app-splash"
+      class="app-splash"
+      role="status"
+      aria-label="Watt a Beat"
+    >
+      <div class="app-splash-inner">
+        <div class="app-splash-mark">
+          <img
+            class="app-splash-logo"
+            src="/app-logo.svg"
+            alt=""
+            width="92"
+            height="92"
+          />
+          <span class="app-splash-shimmer" aria-hidden="true"></span>
+        </div>
+        <p class="app-splash-name">Watt a Beat</p>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

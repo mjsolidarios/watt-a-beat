@@ -1,7 +1,10 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { buildingBlockBatches } from "./building-blocks.mjs";
 
-export function BuildingBlocks({
+type Batches = ReturnType<typeof buildingBlockBatches>;
+type Batch = Batches[number];
+
+export const BuildingBlocks = memo(function BuildingBlocks({
   batches,
   region,
   powered,
@@ -9,57 +12,86 @@ export function BuildingBlocks({
   color,
   focused,
 }: {
-  batches: ReturnType<typeof buildingBlockBatches>;
+  batches: Batches;
   region: string;
   powered: boolean;
   brightness: number;
   color: string;
   focused: boolean;
 }) {
+  const count = useMemo(
+    () => batches.reduce((n, b) => n + b.count, 0),
+    [batches],
+  );
   return (
     <g
       data-region-3d={region}
       data-building-district={region}
       data-powered={powered}
-      data-block-count={batches.reduce((n, b) => n + b.count, 0)}
-      opacity={focused ? 1 : 0.32}
+      data-block-count={count}
+      opacity={focused ? undefined : 0.32}
+      shapeRendering="optimizeSpeed"
     >
-      {batches.map((batch, i) => (
-        <g key={i} strokeLinejoin="round">
-          <BlockFaces batch={batch} />
-          {powered && (
-            <>
-              <path
-                data-block-light="roof"
-                d={batch.roof}
-                fill={color}
-                fillOpacity={brightness * 0.55}
-                fillRule="evenodd"
-                pointerEvents="none"
-              />
-              <path
-                data-block-light="windows"
-                d={batch.windows}
-                fill="none"
-                stroke={color}
-                strokeWidth="0.65"
-                strokeDasharray="1.2 0.8"
-                opacity={brightness}
-                pointerEvents="none"
-              />
-            </>
-          )}
+      <BuildingFaces batches={batches} />
+      {powered && (
+        <g data-block-lights="" opacity={brightness} pointerEvents="none">
+          <BuildingLights batches={batches} color={color} />
         </g>
+      )}
+    </g>
+  );
+});
+
+const BuildingFaces = memo(function BuildingFaces({
+  batches,
+}: {
+  batches: Batches;
+}) {
+  return (
+    <g strokeLinejoin="round">
+      {batches.map((batch, i) => (
+        <BlockFaces key={i} batch={batch} />
       ))}
     </g>
   );
-}
+});
 
-const BlockFaces = memo(function BlockFaces({
-  batch,
+// Roof and window glows share one path each so playback can change brightness
+// by compositing a single group instead of rewriting thousands of attributes.
+const BuildingLights = memo(function BuildingLights({
+  batches,
+  color,
 }: {
-  batch: ReturnType<typeof buildingBlockBatches>[number];
+  batches: Batches;
+  color: string;
 }) {
+  const roof = useMemo(() => batches.map((b) => b.roof).join(""), [batches]);
+  const windows = useMemo(
+    () => batches.map((b) => b.windows).join(""),
+    [batches],
+  );
+  return (
+    <>
+      <path
+        data-block-light="roof"
+        d={roof}
+        fill={color}
+        fillOpacity={0.55}
+        fillRule="evenodd"
+      />
+      <path
+        data-block-light="windows"
+        d={windows}
+        fill="none"
+        stroke={color}
+        strokeWidth="0.65"
+        strokeLinecap="round"
+      />
+    </>
+  );
+});
+
+const BlockFaces = memo(function BlockFaces({ batch }: { batch: Batch }) {
   return (
     <>
       <path

@@ -4,6 +4,8 @@ import {
   footprintRings,
   extrudeBuilding,
   buildingBlockBatches,
+  BLOCK_BATCH_SIZE,
+  BLOCK_EXTRUDE_SHEAR,
 } from "../src/building-blocks.mjs";
 
 const building = {
@@ -16,8 +18,14 @@ test("blocks keep their bases on the footprint and lift closed roofs determinist
   assert.match(block.front + block.left, /120\.00,120\.00/);
   const roof = footprintRings(block.roof)[0];
   assert.equal(roof.length, 4);
-  assert.ok(Math.abs(roof[0][0] - (100 - block.height / 2)) < 0.01);
+  assert.ok(
+    Math.abs(roof[0][0] - (100 - block.height * BLOCK_EXTRUDE_SHEAR)) < 0.01,
+  );
   assert.ok(Math.abs(roof[0][1] - (100 - block.height)) < 0.01);
+  assert.ok(
+    Math.abs(roof[0][0] - 100) < Math.abs(roof[0][1] - 100),
+    "roofs rise more than they shear so blocks stay over their bases",
+  );
   assert.ok(block.front && block.left && block.windows);
   const reversed = extrudeBuilding({
     ...building,
@@ -39,10 +47,22 @@ test("dense regions use bounded geometry batches without dropping buildings", ()
   const batches = buildingBlockBatches(
     Array.from({ length: 1000 }, () => building),
   );
-  assert.equal(batches.length, 42);
+  assert.equal(batches.length, Math.ceil(1000 / BLOCK_BATCH_SIZE));
   assert.equal(
     batches.reduce((n, b) => n + b.count, 0),
     1000,
   );
-  assert.ok(batches.every((b) => b.count <= 24 && !b.roof.includes("NaN")));
+  assert.ok(
+    batches.every(
+      (b) => b.count <= BLOCK_BATCH_SIZE && !b.roof.includes("NaN"),
+    ),
+  );
+});
+test("subpixel footprints keep walls but skip window bands", () => {
+  const tiny = extrudeBuilding({
+    d: "M100,100L101,100L101,101L100,101Z",
+    bounds: [100, 100, 101, 101],
+  });
+  assert.ok(tiny.front || tiny.left);
+  assert.equal(tiny.windows, "");
 });

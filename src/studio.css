@@ -1011,8 +1011,10 @@ main {
   .help-button {
     display: none;
   }
-  .brand-symbol svg {
+  .brand-symbol svg,
+  .brand-logo {
     width: 20px;
+    height: 20px;
   }
   .header-right {
     gap: 5px;

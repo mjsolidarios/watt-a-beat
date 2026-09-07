@@ -39,7 +39,11 @@ import {
   YoutubeLogo,
 } from "@phosphor-icons/react";
 import { MapScene } from "./MapScene";
-import { PlaybackProgress, formatTime, usePlaybackPosition } from "./PlaybackProgress";
+import {
+  PlaybackProgress,
+  formatTime,
+  usePlaybackPosition,
+} from "./PlaybackProgress";
 import {
   defaultScene,
   type ColorMode,
@@ -124,6 +128,42 @@ export function App() {
   }, []);
   const [isPanning, setIsPanning] = useState(false);
   const area = useMapArea(scene, setScene, isPanning);
+  const splashStarted = useRef(
+    typeof performance !== "undefined" ? performance.now() : 0,
+  );
+  const [pageLoaded, setPageLoaded] = useState(
+    () => typeof document !== "undefined" && document.readyState === "complete",
+  );
+  useEffect(() => {
+    if (pageLoaded) return;
+    const done = () => setPageLoaded(true);
+    if (document.readyState === "complete") {
+      done();
+      return;
+    }
+    window.addEventListener("load", done);
+    return () => window.removeEventListener("load", done);
+  }, [pageLoaded]);
+  useEffect(() => {
+    const splash = document.getElementById("app-splash");
+    if (!splash) return;
+    const appReady = !!scene.mapData || !!area.error || !area.busy;
+    if (!pageLoaded || !appReady) return;
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const minMs = reduce ? 0 : 1400;
+    const wait = Math.max(
+      0,
+      minMs - (performance.now() - splashStarted.current),
+    );
+    const hide = window.setTimeout(() => {
+      splash.classList.add("is-leaving");
+      splash.setAttribute("aria-hidden", "true");
+      window.setTimeout(() => splash.remove(), reduce ? 80 : 650);
+    }, wait);
+    return () => clearTimeout(hide);
+  }, [pageLoaded, area.busy, area.error, scene.mapData]);
   const districtNames = useMemo(
     () => scene.mapData?.districts.map((d) => d.name) ?? [],
     [scene.mapData],
@@ -669,7 +709,13 @@ export function App() {
       <header className="header">
         <a href="/" className="brand" aria-label="Watt a Beat home">
           <span className="brand-symbol">
-            <Lightning size={25} weight="fill" />
+            <img
+              src="/app-logo.svg"
+              alt=""
+              width={30}
+              height={30}
+              className="brand-logo"
+            />
           </span>
           <span className="brand-copy">
             <span className="brand-name">Watt a Beat</span>

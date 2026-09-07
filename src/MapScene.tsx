@@ -1,5 +1,5 @@
 import { AbsoluteFill, Audio, useCurrentFrame, useVideoConfig } from "remotion";
-import { useId, useMemo } from "react";
+import { memo, useId, useMemo } from "react";
 import { visibleBounds, intersects, pointVisible } from "./map-geometry.mjs";
 import type { SceneProps } from "./types";
 import { buildingBlockBatches } from "./building-blocks.mjs";
@@ -170,13 +170,14 @@ export function MapScene(props: SceneProps) {
                       : undefined,
                 }}
               >
-                <path
-                  data-buildings="base"
-                  d={district.buildings}
-                  fill="#29332b"
-                  stroke="#435040"
-                  strokeWidth="0.35"
-                  fillRule="evenodd"
+                <DistrictGround
+                  buildings={district.buildings}
+                  raised={!!district.blocks}
+                  minor={district.minor}
+                  major={district.major}
+                  zoom={zoom}
+                  selectable={!!onSelect}
+                  interactionMode={props.interactionMode}
                 />
                 {active && !district.blocks && (
                   <path
@@ -190,83 +191,15 @@ export function MapScene(props: SceneProps) {
                     fillRule="evenodd"
                   />
                 )}
-                <path
-                  d={district.minor}
-                  fill="none"
-                  stroke="#394236"
-                  strokeWidth="0.9"
-                  opacity="0.63"
-                />
-                <path
-                  d={district.major}
-                  fill="none"
-                  stroke="#414b41"
-                  strokeWidth="1.6"
-                  opacity="0.48"
-                />
                 {active && (
-                  <>
-                    <path
-                      d={district.major}
-                      fill="none"
-                      stroke={color}
-                      strokeWidth={3 + energy * 3}
-                      opacity={brightness * 0.44}
-                      filter={`url(#${svgId}-soft)`}
-                    />
-                    <path
-                      d={district.major}
-                      fill="none"
-                      stroke={color}
-                      strokeWidth="1.25"
-                      opacity={brightness * 0.9}
-                    />
-                    <g
-                      fill="none"
-                      stroke={color}
-                      strokeLinecap="round"
-                      opacity={brightness * 0.55}
-                      filter={`url(#${svgId}-soft)`}
-                    >
-                      {district.lights.map((path, seed) => (
-                        <path
-                          key={seed}
-                          d={path}
-                          strokeWidth={2 * (3 + energy * (seed + 1))}
-                        />
-                      ))}
-                    </g>
-                    <g
-                      fill="none"
-                      stroke={color}
-                      strokeLinecap="round"
-                      opacity={brightness}
-                    >
-                      {district.lights.map((path, seed) => (
-                        <path
-                          key={seed}
-                          d={path}
-                          strokeWidth={2 * (0.8 + energy * (0.3 + seed * 0.3))}
-                        />
-                      ))}
-                    </g>
-                    <circle
-                      cx={district.point[0]}
-                      cy={district.point[1]}
-                      r={45 + energy * 65}
-                      fill={color}
-                      opacity={brightness * 0.035}
-                      filter={`url(#${svgId}-halo)`}
-                    />
-                  </>
-                )}
-                {onSelect && props.interactionMode === "power" && (
-                  <path
-                    d={`${district.minor} ${district.major}`}
-                    fill="none"
-                    stroke="transparent"
-                    strokeWidth={14 / zoom}
-                    pointerEvents="stroke"
+                  <DistrictLights
+                    svgId={svgId}
+                    color={color}
+                    energy={energy}
+                    brightness={brightness}
+                    major={district.major}
+                    lights={district.lights}
+                    point={district.point}
                   />
                 )}
               </g>
@@ -282,9 +215,17 @@ export function MapScene(props: SceneProps) {
                   powered={enabled.includes(district.name)}
                   focused={!selected || selected === district.name}
                   brightness={
-                    (districtPower(props.envelopes, frame, index, sensitivity) *
-                      intensity) /
-                    100
+                    Math.round(
+                      ((districtPower(
+                        props.envelopes,
+                        frame,
+                        index,
+                        sensitivity,
+                      ) *
+                        intensity) /
+                        100) *
+                        50,
+                    ) / 50
                   }
                   color={districtLightColor(
                     index,
@@ -497,3 +438,127 @@ export function MapScene(props: SceneProps) {
     </AbsoluteFill>
   );
 }
+
+const DistrictGround = memo(function DistrictGround({
+  buildings,
+  raised,
+  minor,
+  major,
+  zoom,
+  selectable,
+  interactionMode,
+}: {
+  buildings: string;
+  raised: boolean;
+  minor: string;
+  major: string;
+  zoom: number;
+  selectable: boolean;
+  interactionMode?: SceneProps["interactionMode"];
+}) {
+  return (
+    <>
+      <path
+        data-buildings="base"
+        d={buildings}
+        fill="#29332b"
+        stroke={raised ? "none" : "#435040"}
+        strokeWidth="0.35"
+        fillRule="evenodd"
+      />
+      <path
+        d={minor}
+        fill="none"
+        stroke="#394236"
+        strokeWidth="0.9"
+        opacity="0.63"
+      />
+      <path
+        d={major}
+        fill="none"
+        stroke="#414b41"
+        strokeWidth="1.6"
+        opacity="0.48"
+      />
+      {selectable && interactionMode === "power" && (
+        <path
+          d={`${minor} ${major}`}
+          fill="none"
+          stroke="transparent"
+          strokeWidth={14 / zoom}
+          pointerEvents="stroke"
+        />
+      )}
+    </>
+  );
+});
+
+const DistrictLights = memo(function DistrictLights({
+  svgId,
+  color,
+  energy,
+  brightness,
+  major,
+  lights,
+  point,
+}: {
+  svgId: string;
+  color: string;
+  energy: number;
+  brightness: number;
+  major: string;
+  lights: string[];
+  point: number[];
+}) {
+  return (
+    <>
+      <path
+        d={major}
+        fill="none"
+        stroke={color}
+        strokeWidth={3 + energy * 3}
+        opacity={brightness * 0.44}
+        filter={`url(#${svgId}-soft)`}
+      />
+      <path
+        d={major}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.25"
+        opacity={brightness * 0.9}
+      />
+      <g
+        fill="none"
+        stroke={color}
+        strokeLinecap="round"
+        opacity={brightness * 0.55}
+        filter={`url(#${svgId}-soft)`}
+      >
+        {lights.map((path, seed) => (
+          <path
+            key={seed}
+            d={path}
+            strokeWidth={2 * (3 + energy * (seed + 1))}
+          />
+        ))}
+      </g>
+      <g fill="none" stroke={color} strokeLinecap="round" opacity={brightness}>
+        {lights.map((path, seed) => (
+          <path
+            key={seed}
+            d={path}
+            strokeWidth={2 * (0.8 + energy * (0.3 + seed * 0.3))}
+          />
+        ))}
+      </g>
+      <circle
+        cx={point[0]}
+        cy={point[1]}
+        r={45 + energy * 65}
+        fill={color}
+        opacity={brightness * 0.035}
+        filter={`url(#${svgId}-halo)`}
+      />
+    </>
+  );
+});

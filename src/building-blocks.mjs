@@ -3,6 +3,14 @@
 const point = ([x, y]) => `${x.toFixed(2)},${y.toFixed(2)}`;
 const polygon = (vertices) => `M${vertices.map(point).join("L")}Z`;
 
+// Consecutive depth-sorted buildings share path nodes. Larger batches cut DOM
+// size; the 3–8px typical height keeps painter errors below a pixel at map scale.
+export const BLOCK_BATCH_SIZE = 128;
+// Horizontal shift per unit height. 0.5 (about 27° from vertical) pulled roofs
+// off the 1–3px footprints that dominate the map. A quarter-height shift still
+// shows the east wall without the city looking sheared northwest.
+export const BLOCK_EXTRUDE_SHEAR = 0.25;
+
 export function footprintRings(path) {
   if (typeof path !== "string" || /[^MLZ\d.,\s+\-eE]/.test(path)) return [];
   return (path.match(/M[^M]+/gi) ?? []).flatMap((part) => {
@@ -43,7 +51,7 @@ export function extrudeBuilding(building) {
   const size = Math.sqrt((x1 - x0) * (y1 - y0));
   const variation = Math.abs(Math.sin(x0 * 0.17 + y0 * 0.31));
   const height = Math.min(26, Math.max(3, size * 0.6 + 2 + variation * 3));
-  const lift = [-height * 0.5, -height];
+  const lift = [-height * BLOCK_EXTRUDE_SHEAR, -height];
   const roofPoint = (p) => [p[0] + lift[0], p[1] + lift[1]];
   let left = "",
     front = "",
@@ -62,14 +70,16 @@ export function extrudeBuilding(building) {
       const orientation = signedArea >= 0 ? 1 : -1;
       const nx = dy * orientation,
         ny = -dx * orientation;
-      if (nx * 0.5 + ny <= 0) continue;
+      if (nx * BLOCK_EXTRUDE_SHEAR + ny <= 0) continue;
       const wall = polygon([a, b, roofPoint(b), roofPoint(a)]);
       if (nx > ny) left += wall;
       else front += wall;
       const length = Math.hypot(dx, dy);
-      if (length < 2) continue;
-      // Window bands are geometry, rather than a wall-clock animation.
-      const floors = Math.min(5, Math.max(1, Math.floor(height / 3)));
+      // Most footprints are 1–3px; window bands on those walls are subpixel.
+      const floors =
+        height >= 6 && length >= 3
+          ? Math.min(2, Math.max(1, Math.floor(height / 5)))
+          : 0;
       for (let floor = 1; floor <= floors; floor++) {
         const t = floor / (floors + 1);
         const inset = Math.min(0.25, 0.7 / length);
@@ -91,7 +101,7 @@ export function extrudeBuilding(building) {
     roof: rings.map((r) => polygon(r.map(roofPoint))).join(""),
     windows,
     height,
-    depth: y1 + x1 * 0.5,
+    depth: y1 + x1 * BLOCK_EXTRUDE_SHEAR,
   };
 }
 
@@ -110,9 +120,9 @@ export function buildingBlockBatches(buildings) {
     .filter(Boolean)
     .sort((a, b) => a.depth - b.depth);
   const batches = [];
-  // Batch nearby buildings to keep a dense district from creating thousands of React nodes.
-  for (let i = 0; i < blocks.length; i += 24) {
-    const group = blocks.slice(i, i + 24);
+  // Batch nearby buildings so a dense district stays a few hundred SVG nodes.
+  for (let i = 0; i < blocks.length; i += BLOCK_BATCH_SIZE) {
+    const group = blocks.slice(i, i + BLOCK_BATCH_SIZE);
     batches.push({
       count: group.length,
       left: group.map((b) => b.left).join(""),

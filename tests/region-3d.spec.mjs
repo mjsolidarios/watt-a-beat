@@ -108,9 +108,9 @@ test("raised buildings switch power by tapping their faces and lights react duri
   await roof.click();
   await expect(west.locator('[data-block-light="windows"]')).toHaveCount(1);
   await page.getByRole("button", { name: "Play demo", exact: true }).click();
-  const light = west.locator('[data-block-light="windows"]');
-  const before = await light.getAttribute("opacity");
-  await expect.poll(() => light.getAttribute("opacity")).not.toBe(before);
+  const lights = west.locator("[data-block-lights]");
+  const before = await lights.getAttribute("opacity");
+  await expect.poll(() => lights.getAttribute("opacity")).not.toBe(before);
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await page.screenshot({ path: ".cache/region-3d-fixture.png" });
 });
