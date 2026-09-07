@@ -16,11 +16,35 @@
   right: 24px;
   width: 500px;
 }
+.start-toolbar:not(.is-collapsed),
+.explore-tools:not(.is-collapsed) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 8px;
+}
+.hud-bar {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  margin: 0 0 12px;
+}
+.hud-body {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
+.hud-title {
+  margin: 0;
+  font-size: 12px;
+  line-height: 32px;
+  color: #bcc5b7;
+}
 .start-hint {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 9px;
-  margin: 0 0 12px;
+  margin: 0;
   font-size: 12px;
   color: #bcc5b7;
 }
@@ -65,6 +89,65 @@
   background: #2b3929;
   border-color: #b8a574;
 }
+.start-toolbar .hud-toggle,
+.explore-tools .hud-toggle,
+.youtube-source .hud-toggle {
+  display: grid;
+  place-items: center;
+  grid-column: 2;
+  grid-row: 1;
+  width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  flex-shrink: 0;
+  background: transparent;
+  border-color: #3c493d;
+  color: #bcc5b7;
+}
+.start-toolbar .hud-toggle:hover,
+.explore-tools .hud-toggle:hover,
+.youtube-source .hud-toggle:hover {
+  background: #2b3929;
+  border-color: #b8a574;
+  color: #efdbac;
+}
+.hud-panel.is-collapsed {
+  padding: 0;
+  width: auto;
+  background: transparent;
+  border: 0;
+}
+.start-toolbar .hud-restore,
+.explore-tools .hud-restore {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  background: #101a15f5;
+  border: 1px solid #3c493d;
+  border-radius: 12px;
+  color: #e2e7db;
+  font-size: 12px;
+  white-space: nowrap;
+  animation: hud-restore-in 180ms ease;
+}
+@keyframes hud-restore-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.start-toolbar .hud-restore:hover,
+.explore-tools .hud-restore:hover {
+  background: #1a271e;
+  border-color: #b8a574;
+}
 .source-choices .demo-choice {
   background: #d6bf86;
   color: #192016;
@@ -84,11 +167,20 @@
   left: 25px;
   width: 310px;
 }
+.explore-tools .hud-bar {
+  margin-bottom: 8px;
+}
 .explore-tools p {
   margin: 10px 0 0;
   font-size: 11px;
   line-height: 1.5;
   color: #b6c1ac;
+}
+.explore-tools .hud-title {
+  margin: 0;
+  font-size: 12px;
+  line-height: 32px;
+  color: #bcc5b7;
 }
 .power-feedback {
   display: block;
@@ -191,6 +283,29 @@
   width: 320px;
   padding: 10px;
 }
+@media (min-width: 801px) {
+  .workspace:has(.start-toolbar.is-collapsed) .youtube-source {
+    top: 80px;
+  }
+}
+.youtube-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.youtube-source .hud-title {
+  margin: 0;
+  font-size: 12px;
+  line-height: 32px;
+  color: #bcc5b7;
+}
+.youtube-source .hud-toggle {
+  position: static;
+  grid-column: auto;
+  grid-row: auto;
+}
 .youtube-video-host {
   width: 100%;
   height: 200px;
@@ -198,10 +313,72 @@
   border-radius: 6px;
   overflow: hidden;
 }
-.youtube-video-host iframe {
+.youtube-video-host iframe,
+.youtube-video-host > div {
   width: 100%;
   height: 200px;
   border: 0;
+}
+.youtube-source.is-mini {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 10px;
+  row-gap: 2px;
+  width: 320px;
+  padding: 8px;
+}
+.youtube-source.is-mini .youtube-head {
+  grid-column: 3;
+  grid-row: 1 / span 2;
+  margin: 0;
+  align-self: center;
+}
+.youtube-source.is-mini .hud-title {
+  display: none;
+}
+.youtube-source.is-mini .youtube-video-host {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  width: 120px;
+  height: 68px;
+}
+.youtube-source.is-mini .youtube-video-host iframe,
+.youtube-source.is-mini .youtube-video-host > div {
+  width: 120px;
+  height: 68px;
+}
+.youtube-source.is-mini .youtube-details {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  min-width: 0;
+}
+.youtube-source.is-mini .youtube-thumbnail {
+  display: none;
+}
+.youtube-source.is-mini .youtube-details strong {
+  display: block;
+  -webkit-line-clamp: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.youtube-source.is-mini .youtube-details span {
+  display: none;
+}
+.youtube-source.is-mini .youtube-status {
+  grid-column: 2;
+  grid-row: 2;
+  margin: 0;
+}
+.youtube-source.is-mini .youtube-note {
+  display: none;
+}
+.youtube-source.is-mini .youtube-actions,
+.youtube-source.is-mini .source-error {
+  grid-column: 1 / -1;
 }
 .youtube-details {
   display: flex;
@@ -255,6 +432,9 @@
 }
 .youtube-actions {
   flex-wrap: wrap;
+}
+.youtube-actions[hidden] {
+  display: none;
 }
 .youtube-actions a {
   min-height: 44px;
@@ -387,6 +567,9 @@
   .has-youtube main {
     min-height: 1230px;
   }
+  .has-youtube:has(.youtube-source.is-mini) main {
+    min-height: 980px;
+  }
   .header {
     padding-inline: 14px;
   }
@@ -408,6 +591,14 @@
     right: 14px;
     width: auto;
     padding: 12px;
+  }
+  .start-toolbar.is-collapsed,
+  .explore-tools.is-collapsed {
+    right: auto;
+    width: auto;
+  }
+  .map-frame:has(.start-toolbar.is-collapsed) .explore-tools {
+    top: 132px;
   }
   .start-hint {
     justify-content: space-between;
@@ -435,6 +626,9 @@
     width: auto;
     padding: 10px 12px;
   }
+  .explore-tools .hud-bar {
+    margin-bottom: 6px;
+  }
   .surprise-actions {
     margin-bottom: 4px;
   }
@@ -444,7 +638,7 @@
   .map-modes {
     position: absolute;
     right: 12px;
-    top: 10px;
+    top: 48px;
   }
   .map-modes > svg {
     display: none;
@@ -457,7 +651,7 @@
     margin-bottom: 48px;
   }
   .explore-tools:has(.surprise-actions button:nth-child(2)) .map-modes {
-    top: 58px;
+    top: 96px;
     left: 12px;
     right: auto;
   }
@@ -470,6 +664,10 @@
     right: auto;
     transform: translateX(-50%);
     width: min(340px, calc(100% - 28px));
+  }
+  .workspace:has(.start-toolbar.is-collapsed):has(.explore-tools.is-collapsed)
+    .youtube-source {
+    top: 196px;
   }
   .transport {
     width: calc(100% - 28px);
@@ -519,6 +717,9 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
+  .hud-restore {
+    animation: none;
+  }
   .district-ripple {
     animation-name: district-ripple-gentle;
   }

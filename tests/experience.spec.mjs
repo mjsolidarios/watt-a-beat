@@ -80,6 +80,67 @@ async function mockYoutube(page) {
   );
 }
 
+test("music and map tool panels can be hidden, restored, and remembered", async ({
+  page,
+}) => {
+  await ready(page);
+  await page.getByRole("button", { name: "Hide music panel" }).click();
+  await expect(
+    page.getByRole("button", { name: "Play demo", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Show music panel" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Hide map tools" }).click();
+  await expect(page.getByRole("button", { name: "Surprise me" })).toHaveCount(
+    0,
+  );
+  await expect(
+    page.getByRole("button", { name: "Show map tools" }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: "Show music panel" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Show map tools" }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Show music panel" }).click();
+  await expect(
+    page.getByRole("button", { name: "Play demo", exact: true }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Show map tools" }).click();
+  await expect(page.getByRole("button", { name: "Surprise me" })).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Hide music panel" }).click();
+  await page.getByRole("button", { name: "Hide map tools" }).click();
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+});
+
+test("Play demo shows a pause icon while the demo is playing", async ({
+  page,
+}) => {
+  await ready(page);
+  await page.getByRole("button", { name: "Play demo", exact: true }).click();
+  const pauseDemo = page.getByRole("button", {
+    name: "Pause demo",
+    exact: true,
+  });
+  await expect(pauseDemo).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Pause", exact: true }),
+  ).toBeVisible();
+  await pauseDemo.click();
+  await expect(
+    page.getByRole("button", { name: "Play demo", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Play", exact: true }),
+  ).toBeVisible();
+});
+
 test("starting choices and YouTube status, validation, retry and demo recovery", async ({
   page,
 }) => {
@@ -119,6 +180,23 @@ test("starting choices and YouTube status, validation, retry and demo recovery",
     "YouTube video exports are silent",
   );
   await page.getByRole("button", { name: "Close dialog" }).click();
+  await page.getByRole("button", { name: "Switch to mini player" }).click();
+  await expect(source).toHaveClass(/is-mini/);
+  await expect(source.locator(".youtube-video-host")).toBeVisible();
+  await expect(source).toContainText("City music");
+  await expect(source.locator(".youtube-note")).toBeHidden();
+  await expect(source.getByRole("button", { name: "Change URL" })).toHaveCount(
+    0,
+  );
+  const mini = await source.locator(".youtube-video-host").boundingBox();
+  expect(mini?.height ?? 200).toBeLessThan(100);
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  await expect(source).toContainText("Playing");
+  await page.getByRole("button", { name: "Expand video preview" }).click();
+  await expect(source.locator(".youtube-note")).toBeVisible();
+  await expect(
+    source.getByRole("button", { name: "Change URL" }),
+  ).toBeVisible();
   await page.getByRole("button", { name: "Play demo", exact: true }).click();
   await expect(source).toHaveCount(0);
   await expect(

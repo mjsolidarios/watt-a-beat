@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from "react";
 import { Player, type PlayerRef } from "@remotion/player";
 import {
@@ -12,6 +13,8 @@ import {
   ArrowRight,
   ArrowUpRight,
   ArrowsOut,
+  CaretDown,
+  CaretUp,
   Check,
   CircleNotch,
   Crosshair,
@@ -103,8 +106,33 @@ function createSyntheticEnvelopes(durationSec: number): number[][] {
   }
   return result;
 }
+function useHudOpen(storageKey: string) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(storageKey) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggle = useCallback(() => {
+    setOpen((current) => {
+      const next = !current;
+      try {
+        localStorage.setItem(storageKey, next ? "1" : "0");
+      } catch {
+        /* private mode */
+      }
+      return next;
+    });
+  }, [storageKey]);
+  return [open, toggle] as const;
+}
 export function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [musicPanelOpen, toggleMusicPanel] = useHudOpen("watt.hud.music");
+  const [toolsPanelOpen, toggleToolsPanel] = useHudOpen("watt.hud.explore");
+  const [youtubePreviewOpen, toggleYoutubePreview] =
+    useHudOpen("watt.hud.youtube");
   const panGesture = useRef<{
     x: number;
     y: number;
@@ -415,6 +443,15 @@ export function App() {
       }
     } catch {}
   }, [muted, youtubeId, loading]);
+  useEffect(() => {
+    const player = ytPlayerRef.current;
+    const host = ytHost.current;
+    if (!player || !host || !youtubeId) return;
+    try {
+      if (youtubePreviewOpen) player.setSize?.(host.clientWidth, 200);
+      else player.setSize?.(120, 68);
+    } catch {}
+  }, [youtubePreviewOpen, youtubeId, loading]);
 
   const update = <K extends keyof SceneProps>(key: K, value: SceneProps[K]) =>
     setScene((s) => ({ ...s, [key]: value }));
@@ -899,11 +936,23 @@ export function App() {
                 )}
               </div>
             )}
-            <section className="start-toolbar" aria-label="Start creating">
-              <p className="start-hint">
-                Pick a place <ArrowRight /> Choose music <ArrowRight /> Watch it
-                light up
-              </p>
+            <HudPanel
+              className="start-toolbar"
+              label="Start creating"
+              bodyId="music-panel-body"
+              open={musicPanelOpen}
+              onToggle={toggleMusicPanel}
+              restoreLabel="Choose music"
+              restoreIcon={<MusicNotes size={16} aria-hidden="true" />}
+              hideLabel="Hide music panel"
+              showLabel="Show music panel"
+              header={
+                <p className="start-hint">
+                  Pick a place <ArrowRight /> Choose music <ArrowRight /> Watch
+                  it light up
+                </p>
+              }
+            >
               <div
                 className="source-choices"
                 role="group"
@@ -911,10 +960,26 @@ export function App() {
               >
                 <button
                   className="demo-choice"
-                  onClick={() => void playDemo()}
+                  onClick={() => {
+                    if (playing && track.isDemo && !youtubeId) togglePlay();
+                    else void playDemo();
+                  }}
                   disabled={loading}
+                  aria-label={
+                    playing && track.isDemo && !youtubeId
+                      ? "Pause demo"
+                      : "Play demo"
+                  }
                 >
-                  <Play size={16} /> Play demo
+                  {playing && track.isDemo && !youtubeId ? (
+                    <>
+                      <Pause size={16} weight="fill" /> Pause
+                    </>
+                  ) : (
+                    <>
+                      <Play size={16} /> Play demo
+                    </>
+                  )}
                 </button>
                 <button
                   onClick={() => upload.current?.click()}
@@ -935,8 +1000,19 @@ export function App() {
                   ? "Release to load your audio"
                   : "You can also drop an audio file anywhere on the map."}
               </span>
-            </section>
-            <div className="explore-tools">
+            </HudPanel>
+            <HudPanel
+              className="explore-tools"
+              label="Map tools"
+              bodyId="map-tools-body"
+              open={toolsPanelOpen}
+              onToggle={toggleToolsPanel}
+              restoreLabel="Map tools"
+              restoreIcon={<HandTap size={16} aria-hidden="true" />}
+              hideLabel="Hide map tools"
+              showLabel="Show map tools"
+              header={<p className="hud-title">Map tools</p>}
+            >
               <div className="surprise-actions">
                 <button
                   className="surprise-button"
@@ -1029,7 +1105,7 @@ export function App() {
                   ? `${scene.enabled.length} of ${districtNames.length} districts on. ${interactionMessage}`
                   : interactionMessage}
               </span>
-            </div>
+            </HudPanel>
             {error && (
               <div className="map-error" role="alert">
                 {error}
@@ -1126,7 +1202,35 @@ export function App() {
             </div>
           </div>
           {youtubeId && (
-            <aside className="youtube-source" aria-label="YouTube video">
+            <aside
+              className={`youtube-source${youtubePreviewOpen ? "" : " is-mini"}`}
+              aria-label="YouTube video"
+            >
+              <div className="youtube-head">
+                <p className="hud-title">YouTube</p>
+                <button
+                  type="button"
+                  className="hud-toggle"
+                  aria-expanded={youtubePreviewOpen}
+                  aria-label={
+                    youtubePreviewOpen
+                      ? "Switch to mini player"
+                      : "Expand video preview"
+                  }
+                  data-tooltip={
+                    youtubePreviewOpen
+                      ? "Switch to mini player"
+                      : "Expand video preview"
+                  }
+                  onClick={toggleYoutubePreview}
+                >
+                  {youtubePreviewOpen ? (
+                    <CaretUp size={14} aria-hidden="true" />
+                  ) : (
+                    <CaretDown size={14} aria-hidden="true" />
+                  )}
+                </button>
+              </div>
               <div className="youtube-video-host" ref={ytHost} />
               <div className="youtube-details">
                 <span className="youtube-thumbnail">
@@ -1147,14 +1251,21 @@ export function App() {
                   <span>{track.artist}</span>
                 </div>
               </div>
-              <p role="status">{ytStatus}</p>
-              <p>Simulated rhythm · lights may not match the beat.</p>
+              <p className="youtube-status" role="status">
+                {ytStatus}
+              </p>
+              <p className="youtube-note">
+                Simulated rhythm · lights may not match the beat.
+              </p>
               {ytError && !showYtInput && (
                 <p role="alert" className="source-error">
                   {ytError}
                 </p>
               )}
-              <div className="youtube-actions">
+              <div
+                className="youtube-actions"
+                hidden={!youtubePreviewOpen && !ytError}
+              >
                 {ytError && (
                   <button
                     onClick={() =>
@@ -1682,8 +1793,10 @@ export function App() {
               Search for a place in the Philippines, drag to pan, and scroll to
               zoom. Use Ripple, Focus, or Power and tap a district label to play
               with the lights. Surprise me changes your place and look; Undo
-              restores them. Use Map settings to adjust the lights or cut power
-              to individual districts.
+              restores them. Hide the music and map tool panels, or shrink the
+              YouTube preview to a mini player, when you want more of the map.
+              Use Map settings to adjust the lights or cut power to individual
+              districts.
             </p>
             <p>
               Choose City lights, Christmas, Moonlight, or Rain in the bottom
@@ -1728,6 +1841,63 @@ export function App() {
         </Modal>
       )}
     </div>
+  );
+}
+function HudPanel({
+  className,
+  label,
+  bodyId,
+  open,
+  onToggle,
+  restoreLabel,
+  restoreIcon,
+  hideLabel,
+  showLabel,
+  header,
+  children,
+}: {
+  className: string;
+  label: string;
+  bodyId: string;
+  open: boolean;
+  onToggle: () => void;
+  restoreLabel: string;
+  restoreIcon: ReactNode;
+  hideLabel: string;
+  showLabel: string;
+  header: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={`hud-panel ${className}${open ? "" : " is-collapsed"}`}
+      aria-label={label}
+    >
+      <button
+        type="button"
+        className={open ? "hud-toggle" : "hud-restore"}
+        aria-expanded={open}
+        aria-controls={bodyId}
+        aria-label={open ? hideLabel : showLabel}
+        data-tooltip={open ? hideLabel : showLabel}
+        onClick={onToggle}
+      >
+        {open ? (
+          <CaretUp size={14} aria-hidden="true" />
+        ) : (
+          <>
+            {restoreIcon}
+            {restoreLabel}
+          </>
+        )}
+      </button>
+      <div className="hud-bar" hidden={!open}>
+        {header}
+      </div>
+      <div className="hud-body" id={bodyId} hidden={!open}>
+        {children}
+      </div>
+    </section>
   );
 }
 function Toggle({
