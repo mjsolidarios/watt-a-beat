@@ -209,7 +209,7 @@ test("YouTube and local files share play, pause, seek, buffering, volumes and fu
     ),
   ).toBe(true);
   await page.getByRole("button", { name: /Your mix · 3 sources/ }).click();
-  await page.getByRole("slider", { name: "YouTube volume" }).fill("25");
+  await page.getByRole("slider", { name: "YouTube video 1 volume" }).fill("25");
   await page.getByRole("button", { name: "Close dialog", exact: true }).click();
   await page.getByRole("button", { name: "Unmute", exact: true }).click();
   expect(await page.evaluate(() => window.testPlayer.volume)).toBe(25);
@@ -239,7 +239,8 @@ test("YouTube and local files share play, pause, seek, buffering, volumes and fu
     .toBeLessThan(2);
   await page.getByRole("button", { name: /Your mix · 4 sources/ }).click();
   await page
-    .getByRole("button", { name: "Remove YouTube video", exact: true })
+    .getByRole("dialog")
+    .getByRole("button", { name: "Remove YouTube video 1", exact: true })
     .click();
   await expect(page.locator(".youtube-source")).toHaveCount(0);
   expect(errors).toEqual([]);

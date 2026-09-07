@@ -63,11 +63,8 @@ import { TooltipLayer } from "./TooltipLayer";
 import gsap from "gsap";
 import { useVideoExport } from "./useVideoExport";
 import { useSurprise } from "./useSurprise";
-import {
-  extractYoutubeId,
-  ensureYoutubeApi,
-  youtubeErrorMessage,
-} from "./youtube.mjs";
+import { extractYoutubeId } from "./youtube.mjs";
+import { useYoutubeSources, MAX_YOUTUBE_SOURCES } from "./useYoutubeSources";
 
 const themes: { id: Theme; name: string; desc: string }[] = [
   { id: "midnight", name: "City lights", desc: "Amber street lights" },
@@ -208,29 +205,34 @@ export function App() {
     duration: 0,
     envelopes: [] as number[][],
   });
-  const [youtubeDuration, setYoutubeDuration] = useState(0);
   const [localVolume, setLocalVolume] = useState(100);
-  const [youtubeVolume, setYoutubeVolume] = useState(100);
-  const ytLoadId = useRef(0);
-  const [track, setTrack] = useState({
-    name: "After hours",
-    artist: "Demo track",
-    isDemo: true,
-  });
-  const [loading, setLoading] = useState(true),
+  const [audioLoading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [playing, setPlaying] = useState(false),
     [muted, setMuted] = useState(false),
     [dragging, setDragging] = useState(false);
+  const youtube = useYoutubeSources(muted);
+  const {
+    sources: youtubeSources,
+    add: addYoutube,
+    remove: removeYoutubeSource,
+    clear: clearYoutube,
+    retry: retryYoutubeSource,
+    entries: youtubeEntries,
+    events: youtubeEvents,
+  } = youtube;
+  const hasYoutube = youtubeSources.length > 0;
+  const youtubeDuration = Math.max(
+    0,
+    ...youtubeSources.map((source) => source.duration),
+  );
+  const loading = audioLoading || youtube.loading;
+  const playableYoutube = youtubeSources.some((source) => source.ready);
   const playbackPosition = usePlaybackPosition();
   const { setFrame } = playbackPosition;
-  const [youtubeId, setYoutubeId] = useState<string | null>(null);
   const [showYtInput, setShowYtInput] = useState(false);
   const [ytUrlInput, setYtUrlInput] = useState("");
   const [ytError, setYtError] = useState("");
-  const [ytStatus, setYtStatus] = useState("Ready to play");
-  const ytHost = useRef<HTMLDivElement>(null);
-  const ytReadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [interactionMode, setInteractionMode] = useState<
     "ripple" | "focus" | "power"
   >("ripple");
@@ -240,7 +242,6 @@ export function App() {
   const surprise = useSurprise(scene, setScene, area);
   const videoExport = useVideoExport();
   const [exportFormat, setExportFormat] = useState<"mp4" | "webm">("mp4");
-  const ytPlayerRef = useRef<any>(null);
   const [modal, setModal] = useState(false),
     [help, setHelp] = useState(false),
     [resolution, setResolution] = useState("1080"),
@@ -269,7 +270,7 @@ export function App() {
     localDuration: localAnalysis.duration,
     youtubeDuration,
     totalFrames,
-    youtube: ytPlayerRef,
+    youtube: youtubeEntries,
     player,
     onFrame: setFrame,
     onPlaying: setPlaying,
@@ -289,43 +290,46 @@ export function App() {
     if (previewAudio.current) previewAudio.current.volume = localVolume / 100;
   }, [localVolume]);
 
-  const removeYoutube = useCallback(() => {
-    ++ytLoadId.current;
+  useEffect(() => {
+    youtubeEvents.current = { onState: youtubeState, onFailure: pauseMix };
+  }, [youtubeEvents, youtubeState, pauseMix]);
+  const removeYoutube = useCallback(
+    (key?: string) => {
+      pauseMix();
+      if (key) removeYoutubeSource(key);
+      else clearYoutube();
+      seekAudio(0);
+    },
+    [pauseMix, removeYoutubeSource, clearYoutube, seekAudio],
+  );
+  const retryYoutube = (key: string) => {
     pauseMix();
-    if (ytReadyTimer.current) clearTimeout(ytReadyTimer.current);
-    ytPlayerRef.current?.destroy?.();
-    ytPlayerRef.current = null;
-    setYoutubeId(null);
-    setYoutubeDuration(0);
-    setYtError("");
-    setLoading(false);
     seekAudio(0);
-  }, [pauseMix, seekAudio]);
-
+    retryYoutubeSource(key);
+  };
   const loadYoutube = useCallback(
-    async (rawUrl: string) => {
+    (rawUrl: string) => {
       const id = extractYoutubeId(rawUrl);
       if (!id) {
         setYtError("Enter a valid YouTube URL (youtu.be or youtube.com).");
         setShowYtInput(true);
         return;
       }
-      const loadToken = ++ytLoadId.current;
+      if (youtubeEntries.current.size >= MAX_YOUTUBE_SOURCES) {
+        setYtError(
+          `A mix can hold up to ${MAX_YOUTUBE_SOURCES} YouTube videos. Remove a video before adding another.`,
+        );
+        setShowYtInput(true);
+        return;
+      }
       ++loadId.current;
-      if (ytReadyTimer.current) clearTimeout(ytReadyTimer.current);
-      setLoading(true);
-      setPlaying(false);
+      pauseMix();
+      seekAudio(0);
       setPlayDemoWhenReady(false);
       setError("");
       setYtError("");
-      setYtStatus("Connecting to YouTube…");
+      setYtUrlInput("");
       setShowYtInput(false);
-      setYtUrlInput(rawUrl.trim());
-      pauseMix();
-      seekAudio(0);
-      setYoutubeDuration(0);
-      ytPlayerRef.current?.destroy?.();
-      ytPlayerRef.current = null;
       if (decodedTracks.current.every((t) => t.isDemo)) {
         decodedTracks.current = [];
         setLocalTracks([]);
@@ -335,136 +339,13 @@ export function App() {
         blobUrl.current = "";
         setScene((s) => ({ ...s, audioSrc: "" }));
       }
-      setYoutubeId(id);
-      setTrack({
-        name: "Loading video details…",
-        artist: "YouTube",
-        isDemo: false,
-      });
+      setLoading(false);
+      addYoutube(id);
       setFrame(0);
       player.current?.seekTo(0);
-      const fail = (message: string) => {
-        if (loadToken !== ytLoadId.current) return;
-        if (ytReadyTimer.current) clearTimeout(ytReadyTimer.current);
-        ++ytLoadId.current;
-        setYtError(message);
-        setYtStatus("Unable to play");
-        setLoading(false);
-        setPlaying(false);
-        pauseMix();
-        setYoutubeDuration(0);
-        ytPlayerRef.current?.destroy?.();
-        ytPlayerRef.current = null;
-      };
-      try {
-        await ensureYoutubeApi();
-        if (loadToken !== ytLoadId.current) return;
-        // React owns the outer host; YouTube may replace only its inner child.
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => resolve()),
-        );
-        if (loadToken !== ytLoadId.current || !ytHost.current) return;
-        ytHost.current.replaceChildren();
-        const element = document.createElement("div");
-        ytHost.current.appendChild(element);
-        setYtStatus("Loading video…");
-        ytReadyTimer.current = setTimeout(
-          () =>
-            fail(
-              "This video took too long to load. Retry or choose another URL.",
-            ),
-          15000,
-        );
-        const refreshDetails = (p: any) => {
-          const data = p.getVideoData?.() || {};
-          setTrack({
-            name: data.title || "YouTube video",
-            artist: data.author || "YouTube",
-            isDemo: false,
-          });
-          const duration = p.getDuration?.();
-          if (Number.isFinite(duration) && duration > 0) {
-            setYoutubeDuration(duration);
-          }
-        };
-        ytPlayerRef.current = new (window as any).YT.Player(element, {
-          height: "200",
-          width: "100%",
-          videoId: id,
-          playerVars: {
-            autoplay: 0,
-            controls: 1,
-            playsinline: 1,
-            rel: 0,
-            origin: window.location.origin,
-          },
-          events: {
-            onReady: (ev: any) => {
-              if (loadToken !== ytLoadId.current) return;
-              if (ytReadyTimer.current) clearTimeout(ytReadyTimer.current);
-              refreshDetails(ev.target);
-              setYtStatus("Ready to play");
-              setLoading(false);
-            },
-            onStateChange: (ev: any) => {
-              if (loadToken !== ytLoadId.current) return;
-              const state = ev.data;
-              if (state === 1) {
-                refreshDetails(ev.target);
-                setYtStatus("Playing");
-              } else {
-                setYtStatus(
-                  state === 3
-                    ? "Buffering…"
-                    : state === 0
-                      ? "Finished"
-                      : "Paused",
-                );
-              }
-              youtubeState(state);
-            },
-            onAutoplayBlocked: () => {
-              if (loadToken === ytLoadId.current) {
-                pauseMix();
-                setYtStatus("Press play in the video to begin.");
-              }
-            },
-            onError: (ev: any) => fail(youtubeErrorMessage(ev.data)),
-          },
-        });
-      } catch (e) {
-        fail(
-          e instanceof Error
-            ? e.message
-            : "Couldn’t connect to YouTube. Please retry.",
-        );
-      }
     },
-    [pauseMix, seekAudio, youtubeState],
+    [pauseMix, seekAudio, addYoutube, setFrame, youtubeEntries],
   );
-
-  // Keep YT volume in sync with mute toggle
-  useEffect(() => {
-    const p = ytPlayerRef.current;
-    if (!p || !youtubeId) return;
-    try {
-      if (muted) {
-        p.mute?.();
-      } else {
-        p.unMute?.();
-        p.setVolume?.(youtubeVolume);
-      }
-    } catch {}
-  }, [muted, youtubeId, loading, youtubeVolume]);
-  useEffect(() => {
-    const player = ytPlayerRef.current;
-    const host = ytHost.current;
-    if (!player || !host || !youtubeId) return;
-    try {
-      if (youtubePreviewOpen) player.setSize?.(host.clientWidth, 200);
-      else player.setSize?.(120, 68);
-    } catch {}
-  }, [youtubePreviewOpen, youtubeId, loading]);
 
   const update = <K extends keyof SceneProps>(key: K, value: SceneProps[K]) =>
     setScene((s) => ({ ...s, [key]: value }));
@@ -596,15 +477,7 @@ export function App() {
   useEffect(
     () => () => {
       loadId.current++;
-      ytLoadId.current++;
-      if (ytReadyTimer.current) clearTimeout(ytReadyTimer.current);
       if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
-      if (ytPlayerRef.current) {
-        try {
-          ytPlayerRef.current.destroy?.();
-        } catch {}
-        ytPlayerRef.current = null;
-      }
     },
     [],
   );
@@ -712,21 +585,31 @@ export function App() {
       );
   };
   const isDemo =
-    localTracks.length === 1 && localTracks[0].isDemo && !youtubeId;
-  const sourceCount = localTracks.length + (youtubeId ? 1 : 0);
+    localTracks.length === 1 && localTracks[0].isDemo && !hasYoutube;
+  const sourceCount = localTracks.length + youtubeSources.length;
   const mixName =
     sourceCount > 1
       ? `${sourceCount} sources · Your mix`
       : (localTracks[0]?.name ??
-        (youtubeId ? track.name : "Add music to begin"));
+        youtubeSources[0]?.name ??
+        "Add music to begin");
   const mixArtist =
     sourceCount > 1
-      ? `${localTracks.length} audio file${localTracks.length === 1 ? "" : "s"}${youtubeId ? " + YouTube" : ""}`
+      ? [
+          localTracks.length
+            ? `${localTracks.length} audio file${localTracks.length === 1 ? "" : "s"}`
+            : "",
+          youtubeSources.length
+            ? `${youtubeSources.length} YouTube video${youtubeSources.length === 1 ? "" : "s"}`
+            : "",
+        ]
+          .filter(Boolean)
+          .join(" + ")
       : localTracks.length
         ? isDemo
           ? "Demo track"
           : "Uploaded track"
-        : track.artist;
+        : (youtubeSources[0]?.author ?? "Your music, together");
   const playDemo = async () => {
     if (isDemo && scene.audioSrc && !loading) {
       void previewAudio.current
@@ -765,7 +648,7 @@ export function App() {
   };
   const exportBusy = videoExport.busy;
   return (
-    <div className={`app-shell${youtubeId ? " has-youtube" : ""}`}>
+    <div className={`app-shell${hasYoutube ? " has-youtube" : ""}`}>
       <TooltipLayer />
       <audio
         ref={previewAudio}
@@ -1009,15 +892,17 @@ export function App() {
                 <button
                   className="demo-choice"
                   onClick={() => {
-                    if (playing && isDemo && !youtubeId) togglePlay();
+                    if (playing && isDemo && !hasYoutube) togglePlay();
                     else void playDemo();
                   }}
                   disabled={loading}
                   aria-label={
-                    playing && isDemo && !youtubeId ? "Pause demo" : "Play demo"
+                    playing && isDemo && !hasYoutube
+                      ? "Pause demo"
+                      : "Play demo"
                   }
                 >
-                  {playing && isDemo && !youtubeId ? (
+                  {playing && isDemo && !hasYoutube ? (
                     <>
                       <Pause size={16} weight="fill" /> Pause
                     </>
@@ -1035,7 +920,7 @@ export function App() {
                 </button>
                 <button
                   onClick={openYoutubeInput}
-                  disabled={loading}
+                  disabled={audioLoading}
                   aria-expanded={showYtInput}
                   aria-controls="youtube-url-input"
                 >
@@ -1256,94 +1141,100 @@ export function App() {
                 : "1 km"}
             </div>
           </div>
-          {youtubeId && (
+          {hasYoutube && (
             <aside
-              className={`youtube-source${youtubePreviewOpen ? "" : " is-mini"}`}
-              aria-label="YouTube video"
+              className={`youtube-source youtube-collection${youtubePreviewOpen ? "" : " is-compact"}`}
+              aria-label="YouTube videos"
             >
               <div className="youtube-head">
-                <p className="hud-title">YouTube</p>
+                <p className="hud-title">
+                  YouTube · {youtubeSources.length} / {MAX_YOUTUBE_SOURCES}
+                </p>
                 <button
-                  type="button"
                   className="hud-toggle"
+                  type="button"
+                  onClick={toggleYoutubePreview}
                   aria-expanded={youtubePreviewOpen}
                   aria-label={
                     youtubePreviewOpen
-                      ? "Switch to mini player"
-                      : "Expand video preview"
+                      ? "Compact video previews"
+                      : "Expand video previews"
                   }
-                  data-tooltip={
-                    youtubePreviewOpen
-                      ? "Switch to mini player"
-                      : "Expand video preview"
-                  }
-                  onClick={toggleYoutubePreview}
                 >
                   {youtubePreviewOpen ? (
-                    <CaretUp size={14} aria-hidden="true" />
+                    <CaretUp size={14} />
                   ) : (
-                    <CaretDown size={14} aria-hidden="true" />
+                    <CaretDown size={14} />
                   )}
                 </button>
               </div>
-              <div className="youtube-video-host" ref={ytHost} />
-              <div className="youtube-details">
-                <span className="youtube-thumbnail">
-                  <YoutubeLogo size={24} aria-hidden="true" />
-                  <img
-                    key={youtubeId}
-                    src={`https://i.ytimg.com/vi/${youtubeId}/default.jpg`}
-                    alt="Video thumbnail"
-                    width="64"
-                    height="48"
-                    onError={(event) => {
-                      event.currentTarget.hidden = true;
-                    }}
-                  />
-                </span>
-                <div>
-                  <strong>{track.name}</strong>
-                  <span>{track.artist}</span>
-                </div>
+              <div
+                className="youtube-video-list"
+                role="region"
+                aria-label="Video previews; scroll for more videos"
+                tabIndex={0}
+              >
+                {youtubeSources.map((source, index) => (
+                  <section
+                    className="youtube-video-card"
+                    key={source.key}
+                    aria-label={`YouTube video ${index + 1}: ${source.name}`}
+                  >
+                    <div className="youtube-card-heading">
+                      <strong>
+                        {index + 1}. {source.name}
+                      </strong>
+                      <button
+                        className="icon-button"
+                        aria-label={`Remove YouTube video ${index + 1}`}
+                        onClick={() => removeYoutube(source.key)}
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                    <div
+                      className="youtube-video-host"
+                      ref={(element) => youtube.attachHost(source.key, element)}
+                    />
+                    <p className="youtube-status" role="status">
+                      {source.status}
+                    </p>
+                    {source.error && (
+                      <p role="alert" className="source-error">
+                        {source.error}
+                      </p>
+                    )}
+                    <div className="youtube-actions">
+                      {source.error && (
+                        <button onClick={() => retryYoutube(source.key)}>
+                          Retry video {index + 1}
+                        </button>
+                      )}
+                      <a
+                        href={`https://www.youtube.com/watch?v=${source.videoId}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        Open on YouTube <ArrowUpRight size={13} />
+                      </a>
+                    </div>
+                  </section>
+                ))}
               </div>
-              <p className="youtube-status" role="status">
-                {ytStatus}
-              </p>
               <p className="youtube-note">
                 {localTracks.length
-                  ? "Lights follow your audio files. YouTube plays alongside the mix."
+                  ? "Lights follow your audio files. All videos play alongside the mix."
                   : "Simulated rhythm · lights may not match the beat."}
               </p>
-              {ytError && !showYtInput && (
-                <p role="alert" className="source-error">
-                  {ytError}
-                </p>
-              )}
-              <div
-                className="youtube-actions"
-                hidden={!youtubePreviewOpen && !ytError}
+              <button
+                className="youtube-add"
+                onClick={openYoutubeInput}
+                disabled={
+                  audioLoading || youtubeSources.length >= MAX_YOUTUBE_SOURCES
+                }
               >
-                {ytError && (
-                  <button
-                    onClick={() =>
-                      void loadYoutube(
-                        `https://www.youtube.com/watch?v=${youtubeId}`,
-                      )
-                    }
-                    disabled={loading}
-                  >
-                    Retry video
-                  </button>
-                )}
-                <button onClick={openYoutubeInput}>Change URL</button>
-                <a
-                  href={`https://www.youtube.com/watch?v=${youtubeId}`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open on YouTube <ArrowUpRight size={13} />
-                </a>
-              </div>
+                <Plus size={16} /> Add another video
+              </button>
             </aside>
           )}
           <section
@@ -1358,15 +1249,15 @@ export function App() {
               <div className="track-details">
                 <strong>
                   {loading
-                    ? youtubeId
-                      ? ytStatus
-                      : "Loading audio…"
+                    ? audioLoading
+                      ? "Loading audio…"
+                      : "Loading videos…"
                     : mixName}
                 </strong>
                 <span>
                   {mixArtist}
                   {isDemo && <span className="demo-tag">DEMO</span>}
-                  {youtubeId && (
+                  {hasYoutube && (
                     <span
                       className="demo-tag"
                       style={{ borderColor: "#9a6b4a", color: "#d4a67f" }}
@@ -1383,7 +1274,7 @@ export function App() {
                 noValidate
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (!loading) void loadYoutube(ytUrlInput);
+                  if (!audioLoading) loadYoutube(ytUrlInput);
                 }}
               >
                 <label htmlFor="youtube-url-input">YouTube video URL</label>
@@ -1410,7 +1301,7 @@ export function App() {
                   />
                   <button
                     type="submit"
-                    disabled={!ytUrlInput.trim() || loading}
+                    disabled={!ytUrlInput.trim() || audioLoading}
                   >
                     Load
                   </button>
@@ -1419,8 +1310,8 @@ export function App() {
                   </button>
                 </div>
                 <p id="youtube-source-note">
-                  Adds one video alongside your audio files. With audio files
-                  loaded, the lights follow their combined beat.
+                  Each URL adds another video to your mix, up to 8 videos. Your
+                  existing videos and audio files stay loaded.
                 </p>
                 {ytError && (
                   <p role="alert" className="source-error">
@@ -1435,9 +1326,7 @@ export function App() {
                 className="play-button"
                 aria-label={playing ? "Pause" : "Play"}
                 onClick={togglePlay}
-                disabled={
-                  loading || (!scene.audioSrc && (!youtubeId || !!ytError))
-                }
+                disabled={loading || (!scene.audioSrc && !playableYoutube)}
               >
                 {loading ? (
                   <CircleNotch size={20} className="spin" />
@@ -1460,17 +1349,7 @@ export function App() {
                 className="icon-button volume-button"
                 aria-label={muted ? "Unmute" : "Mute"}
                 data-tooltip={muted ? "Unmute" : "Mute"}
-                onClick={() => {
-                  const next = !muted;
-                  setMuted(next);
-                  if (youtubeId && ytPlayerRef.current) {
-                    try {
-                      ytPlayerRef.current.setVolume?.(next ? 0 : 100);
-                      if (next) ytPlayerRef.current.mute?.();
-                      else ytPlayerRef.current.unMute?.();
-                    } catch {}
-                  }
-                }}
+                onClick={() => setMuted((current) => !current)}
               >
                 {muted ? <SpeakerSlash size={20} /> : <SpeakerHigh size={20} />}
               </button>
@@ -1718,7 +1597,7 @@ export function App() {
         <Modal
           onClose={() => setMixOpen(false)}
           title="Your music mix"
-          description="Layer up to 8 audio files and a YouTube video. All sources start together."
+          description="Layer up to 8 audio files and 8 YouTube videos. All sources start together."
         >
           <div className="mix-sources" aria-label="Mix sources">
             <div className="mix-heading">
@@ -1752,19 +1631,22 @@ export function App() {
                   </button>
                 </li>
               ))}
-              {youtubeId && (
-                <li>
+              {youtubeSources.map((source, index) => (
+                <li key={source.key}>
                   <YoutubeLogo size={16} aria-hidden="true" />
-                  <span title={track.name}>{track.name}</span>
+                  <span title={source.name}>
+                    {index + 1}. {source.name}
+                    {source.error ? " · Unavailable" : ""}
+                  </span>
                   <button
                     className="icon-button"
-                    aria-label="Remove YouTube video"
-                    onClick={removeYoutube}
+                    aria-label={`Remove YouTube video ${index + 1}`}
+                    onClick={() => removeYoutube(source.key)}
                   >
                     <X size={15} />
                   </button>
                 </li>
-              )}
+              ))}
             </ul>
             <div className="mix-levels">
               {localTracks.length > 0 && (
@@ -1780,19 +1662,22 @@ export function App() {
                   <output>{localVolume}%</output>
                 </label>
               )}
-              {youtubeId && (
-                <label>
-                  YouTube volume
+              {youtubeSources.map((source, index) => (
+                <label key={source.key} title={source.name}>
+                  Video {index + 1} volume
                   <input
                     type="range"
                     min="0"
                     max="100"
-                    value={youtubeVolume}
-                    onChange={(e) => setYoutubeVolume(+e.target.value)}
+                    value={source.volume}
+                    aria-label={`YouTube video ${index + 1} volume`}
+                    onChange={(e) =>
+                      youtube.setVolume(source.key, +e.target.value)
+                    }
                   />
-                  <output>{youtubeVolume}%</output>
+                  <output>{source.volume}%</output>
                 </label>
-              )}
+              ))}
             </div>
             <p>
               Play, pause, and seek all sources together. Editing sources
@@ -1817,9 +1702,7 @@ export function App() {
           <div className="mix-actions">
             <button
               className="primary-action"
-              disabled={
-                loading || (!scene.audioSrc && (!youtubeId || !!ytError))
-              }
+              disabled={loading || (!scene.audioSrc && !playableYoutube)}
               onClick={togglePlay}
             >
               {playing ? <Pause size={16} /> : <Play size={16} />}
@@ -1841,7 +1724,7 @@ export function App() {
               }}
             >
               <YoutubeLogo size={17} />{" "}
-              {youtubeId ? "Change video" : "Add YouTube"}
+              {hasYoutube ? "Add another video" : "Add YouTube"}
             </button>
           </div>
         </Modal>
@@ -1896,7 +1779,7 @@ export function App() {
             </label>
           </div>
           <p className="export-source-note">
-            {youtubeId
+            {hasYoutube
               ? "Exports include your local audio mix; YouTube sound is not included. With no audio files, exports are silent. Preview volume and mute do not change exported audio."
               : "Includes your soundtrack and current map, colors, and effects. Preview volume and mute do not change the exported audio."}
           </p>
@@ -1944,7 +1827,7 @@ export function App() {
                 disabled={
                   loading ||
                   !scene.mapData ||
-                  (!youtubeId && !audioBytes.current)
+                  (!hasYoutube && !audioBytes.current)
                 }
                 onClick={() => {
                   pauseMix();
@@ -1973,8 +1856,8 @@ export function App() {
         <Modal onClose={() => setHelp(false)} title="How to use Watt a Beat">
           <div className="help-content">
             <p>
-              Add multiple audio files and a YouTube URL to play them together
-              as one mix. Open Your mix to adjust audio and YouTube volumes.
+              Add multiple audio files and YouTube URLs to play them together as
+              one mix. Open Your mix to adjust audio and YouTube volumes.
               Shorter sources finish, then all sources restart when the longest
               ends. Adding or removing a source pauses and restarts the mix. The
               audio is sourced directly from YouTube when you use a video link —
@@ -1986,10 +1869,9 @@ export function App() {
               Search for a place in the Philippines, drag to pan, and scroll to
               zoom. Use Ripple, Focus, or Power and tap a district label to play
               with the lights. Surprise me changes your place and look; Undo
-              restores them. Hide the music and map tool panels, or shrink the
-              YouTube preview to a mini player, when you want more of the map.
-              Use Map settings to adjust the lights or cut power to individual
-              districts.
+              restores them. Hide the music and map tool panels, or compact the
+              YouTube previews, when you want more of the map. Use Map settings
+              to adjust the lights or cut power to individual districts.
             </p>
             <p>
               Choose City lights, Christmas, Moonlight, or Rain in the bottom

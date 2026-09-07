@@ -163,7 +163,7 @@ test("starting choices and YouTube status, validation, retry and demo recovery",
   );
   await input.fill("https://youtu.be/dQw4w9WgXcQ");
   await input.press("Enter");
-  const source = page.getByRole("complementary", { name: "YouTube video" });
+  const source = page.getByRole("complementary", { name: "YouTube videos" });
   await expect(source).toContainText("City music");
   await expect(source).toContainText("Ready to play");
   await expect(source).toContainText("Simulated rhythm");
@@ -172,7 +172,7 @@ test("starting choices and YouTube status, validation, retry and demo recovery",
     window.testPlayer.options.events.onError({ data: 150 }),
   );
   await expect(source.getByRole("alert")).toContainText("embedded players");
-  await source.getByRole("button", { name: "Retry video" }).click();
+  await source.getByRole("button", { name: "Retry video 1" }).click();
   await expect(source).toContainText("Ready to play");
   await expect(source.getByRole("alert")).toHaveCount(0);
   await page.getByRole("button", { name: "Export video", exact: true }).click();
@@ -180,22 +180,22 @@ test("starting choices and YouTube status, validation, retry and demo recovery",
     "With no audio files, exports are silent",
   );
   await page.getByRole("button", { name: "Close dialog" }).click();
-  await page.getByRole("button", { name: "Switch to mini player" }).click();
-  await expect(source).toHaveClass(/is-mini/);
+  await page.getByRole("button", { name: "Compact video previews" }).click();
+  await expect(source).toHaveClass(/is-compact/);
   await expect(source.locator(".youtube-video-host")).toBeVisible();
   await expect(source).toContainText("City music");
   await expect(source.locator(".youtube-note")).toBeHidden();
-  await expect(source.getByRole("button", { name: "Change URL" })).toHaveCount(
-    0,
-  );
+  await expect(
+    source.getByRole("button", { name: "Add another video" }),
+  ).toBeVisible();
   const mini = await source.locator(".youtube-video-host").boundingBox();
-  expect(mini?.height ?? 200).toBeLessThan(100);
+  expect(mini?.height ?? 0).toBeGreaterThanOrEqual(200);
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(source).toContainText("Playing");
-  await page.getByRole("button", { name: "Expand video preview" }).click();
+  await page.getByRole("button", { name: "Expand video previews" }).click();
   await expect(source.locator(".youtube-note")).toBeVisible();
   await expect(
-    source.getByRole("button", { name: "Change URL" }),
+    source.getByRole("button", { name: "Add another video" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Play demo", exact: true }).click();
   await expect(source).toHaveCount(0);

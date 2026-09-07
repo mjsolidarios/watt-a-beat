@@ -13,7 +13,7 @@ Built with React, Vite, Remotion, and OpenStreetMap data.
 - 🏘️ **Building footprints** — Mapped buildings light up with their district’s streets, using the chosen color and music response in both preview and MP4 exports
 - 🗺️ **Philippine map search** — Search cities, towns, and landmarks via Photon + OpenStreetMap
 - 🎥 **Browser video export** — Render MP4 or WebM on your device with `@remotion/web-renderer`, including progress, cancellation, and download
-- **Music mixer** — Add up to 8 audio files and a YouTube video to play together, with shared play/pause/seek and separate audio/YouTube volume controls
+- **Music mixer** — Add up to 8 audio files and 8 YouTube videos to play together, with shared play/pause/seek and a local audio volume control and individual video volumes
 - **Surprise me + Undo** — Explore another Philippine place with randomized lighting, then restore the previous scene without changing music
 - **District tap modes** — Send a light ripple, focus a district, or toggle its power
 - **Visible-area 3D** — Raise buildings across all visible districts into blocks with music-reactive roofs and windows. Only the loaded map area is used; heights are illustrative.
@@ -41,7 +41,7 @@ An original ambient demo track is included. Drop your own MP3, WAV, or M4A (up t
 
 ## How to Use
 
-1. **Choose music** — Select Add audio files (multiple selection and drag-and-drop supported), then Paste YouTube URL to layer a video alongside them. Open Your mix to remove sources and adjust audio/YouTube volume. Up to 8 local files, each at most 60 MB and 5 minutes. The first user source replaces the demo; further files are additive. All sources start together, shorter sources finish, and the entire mix loops at the end of the longest source. Editing sources pauses and resets the mix. Uploaded audio drives real beat response; YouTube alone uses a simulated rhythm. YouTube synchronization is approximate because iframe playback is independently buffered.
+1. **Choose music** — Select Add audio files (multiple selection and drag-and-drop supported), then use Paste YouTube URL for each video you want to add (up to 8 videos). Adding a URL keeps the existing videos. Open Your mix to remove sources and adjust local audio volume and each video’s volume. Up to 8 local files, each at most 60 MB and 5 minutes. The first user source replaces the demo; further files are additive. All sources start together, shorter sources finish, and the entire mix loops at the end of the longest source. Editing sources pauses and resets the mix. Uploaded audio drives real beat response; YouTube alone uses a simulated rhythm. YouTube synchronization is approximate because iframe playback is independently buffered.
 2. **Choose an atmosphere** — Switch between City lights, Christmas, Moonlight, or Rain in the floating dock.
 3. **Adjust & explore** — Open settings (sliders icon) to tweak intensity, sensitivity, toggle map labels, weather particles, or disconnect districts.
 4. **Pan & zoom** — Drag the map to pan. Use the zoom and reset buttons in the bottom-right.
@@ -73,6 +73,7 @@ src/
   useSurprise.ts       # Random location and lighting with visual-only Undo
   audio-mix.mjs       # Local PCM mixing and WAV encoding
   useMixPlayback.ts  # Shared transport and longest-source media clock
+  useYoutubeSources.ts # Independent YouTube loading, retry, volume and cleanup
   youtube.mjs         # URL validation and recoverable YouTube API loading
   audio-analysis.mjs   # Real-time + export audio envelope extraction
   scene-effects.mjs    # District lighting + particle logic
@@ -95,7 +96,7 @@ Video exports use WebCodecs through `@remotion/web-renderer`. Browser support is
 Run the browser feature and real export checks with the studio running:
 
 ```bash
-CHROME_BIN=/usr/bin/google-chrome npx playwright test tests/audio-mix.spec.mjs tests/audio-playback.spec.mjs tests/experience.spec.mjs --workers=1
+CHROME_BIN=/usr/bin/google-chrome npx playwright test tests/multi-youtube.spec.mjs tests/audio-mix.spec.mjs tests/audio-playback.spec.mjs tests/experience.spec.mjs --workers=1
 ```
 
 Omit `CHROME_BIN` to use Playwright’s installed Chromium. `TEST_BASE_URL` selects a different local server. The checks cover source choices, YouTube error recovery, Surprise/Undo, district interactions, mobile layout, and a decoded browser export with audio.
