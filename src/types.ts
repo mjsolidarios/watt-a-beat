@@ -47,7 +47,11 @@ export type SceneProps = {
   zoom: number;
   pan: { x: number; y: number };
   selected: string | null;
+  buildings3D?: boolean;
   onSelect?: (name: string) => void;
+  interactionMode?: "focus" | "ripple" | "power";
+  ripple?: { district: string; id: number };
+  exportFontCss?: string;
   duration: number;
   branding?: boolean;
 };
@@ -75,6 +79,7 @@ export const defaultScene: SceneProps = {
   zoom: 1,
   pan: { x: 0, y: 0 },
   selected: null,
+  buildings3D: false,
   duration: 32,
   branding: true,
 };

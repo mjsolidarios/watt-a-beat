@@ -1,7 +1,10 @@
 import { AbsoluteFill, Audio, useCurrentFrame, useVideoConfig } from "remotion";
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import { visibleBounds, intersects, pointVisible } from "./map-geometry.mjs";
 import type { SceneProps } from "./types";
+import { buildingBlockBatches } from "./building-blocks.mjs";
+import { BuildingBlocks } from "./BuildingBlocks";
+import { lightBatches } from "./light-batches.mjs";
 import {
   baseLightColor,
   districtLightColor,
@@ -17,6 +20,7 @@ const snowflakes = Array.from({ length: 120 }, (_, index) =>
 );
 
 export function MapScene(props: SceneProps) {
+  const svgId = useId().replace(/:/g, "");
   const frame = useCurrentFrame(),
     { fps } = useVideoConfig();
   const {
@@ -42,12 +46,20 @@ export function MapScene(props: SceneProps) {
       ...data,
       districts: data.districts.map((d) => {
         const roads = d.roads.filter((r) => intersects(r.bounds, view));
+        const raised = props.buildings3D;
+        const buildings = (d.buildings ?? []).filter((b) =>
+          intersects(
+            b.bounds,
+            raised
+              ? [view[0] - 32, view[1] - 32, view[2] + 32, view[3] + 32]
+              : view,
+          ),
+        );
         return {
           ...d,
-          buildings: (d.buildings ?? [])
-            .filter((b) => intersects(b.bounds, view))
-            .map((b) => b.d)
-            .join(""),
+          buildings: buildings.map((b) => b.d).join(""),
+          blocks:
+            raised && buildings.length ? buildingBlockBatches(buildings) : null,
           minor: roads
             .filter((r) => !r.major)
             .map((r) => r.d)
@@ -56,54 +68,59 @@ export function MapScene(props: SceneProps) {
             .filter((r) => r.major)
             .map((r) => r.d)
             .join(""),
-          lights: d.lights.filter((p) => pointVisible(p, view)),
+          lights: lightBatches(d.lights.filter((p) => pointVisible(p, view))),
         };
       }),
       rivers: data.rivers.filter((r) => intersects(r.bounds, view)),
       water: data.water.filter((r) => intersects(r.bounds, view)),
     };
-  }, [props.mapData, zoom, pan.x, pan.y]);
+  }, [props.mapData, zoom, pan.x, pan.y, props.buildings3D]);
   const gold = baseLightColor(theme, colorMode, lightColor);
   if (!map) return <AbsoluteFill style={{ backgroundColor: "#101615" }} />;
   return (
     <AbsoluteFill
-      style={{ backgroundColor: "#101615", fontFamily: "Geist, system-ui, sans-serif" }}
+      style={{
+        backgroundColor: "#101615",
+        fontFamily: "Geist, system-ui, sans-serif",
+      }}
     >
       {props.audioSrc && <Audio src={props.audioSrc} />}
       <svg
         viewBox="0 0 1600 900"
         width="100%"
         height="100%"
-        style={{ overflow: "hidden" }}
+        style={{ overflow: "hidden", fontFamily: "Geist, Arial, sans-serif" }}
         aria-label={`Music-reactive brownout map of ${map.name}`}
         data-frame={frame}
         data-map-id={map.id}
         data-map-name={map.name}
         data-road-count={map.roadCount}
         data-building-count={map.buildingCount ?? 0}
+        data-buildings-3d={!!props.buildings3D}
       >
+        {props.exportFontCss && <style>{props.exportFontCss}</style>}
         <defs>
-          <filter id="soft">
+          <filter id={`${svgId}-soft`}>
             <feGaussianBlur stdDeviation="5" />
           </filter>
-          <filter id="halo">
+          <filter id={`${svgId}-halo`}>
             <feGaussianBlur stdDeviation="24" />
           </filter>
           <pattern
-            id="water"
+            id={`${svgId}-water`}
             width="22"
             height="22"
             patternUnits="userSpaceOnUse"
           >
             <path d="M0 11h2" stroke="#25312e" strokeWidth="1" />
           </pattern>
-          <radialGradient id="vignette">
+          <radialGradient id={`${svgId}-vignette`}>
             <stop offset="50%" stopColor="#101615" stopOpacity="0" />
             <stop offset="100%" stopColor="#101615" stopOpacity="0.75" />
           </radialGradient>
         </defs>
         <rect width="1600" height="900" fill="#0b1111" />
-        <rect width="1600" height="900" fill="url(#water)" />
+        <rect width="1600" height="900" fill={`url(#${svgId}-water)`} />
         <g
           transform={`translate(${800 + pan.x} ${450 + pan.y}) scale(${zoom}) translate(-800 -450)`}
         >
@@ -144,7 +161,14 @@ export function MapScene(props: SceneProps) {
                 key={district.name}
                 opacity={focus ? 1 : 0.32}
                 data-district={district.name}
+                data-powered={active}
                 data-power={active ? brightness.toFixed(3) : "0.000"}
+                style={{
+                  cursor:
+                    onSelect && props.interactionMode === "power"
+                      ? "pointer"
+                      : undefined,
+                }}
               >
                 <path
                   data-buildings="base"
@@ -154,7 +178,7 @@ export function MapScene(props: SceneProps) {
                   strokeWidth="0.35"
                   fillRule="evenodd"
                 />
-                {active && (
+                {active && !district.blocks && (
                   <path
                     data-buildings="lit"
                     d={district.buildings}
@@ -188,7 +212,7 @@ export function MapScene(props: SceneProps) {
                       stroke={color}
                       strokeWidth={3 + energy * 3}
                       opacity={brightness * 0.44}
-                      filter="url(#soft)"
+                      filter={`url(#${svgId}-soft)`}
                     />
                     <path
                       d={district.major}
@@ -198,27 +222,31 @@ export function MapScene(props: SceneProps) {
                       opacity={brightness * 0.9}
                     />
                     <g
-                      fill={color}
+                      fill="none"
+                      stroke={color}
+                      strokeLinecap="round"
                       opacity={brightness * 0.55}
-                      filter="url(#soft)"
+                      filter={`url(#${svgId}-soft)`}
                     >
-                      {district.lights.map(([x, y, seed], i) => (
-                        <circle
-                          key={i}
-                          cx={x}
-                          cy={y}
-                          r={3 + energy * ((seed % 3) + 1)}
+                      {district.lights.map((path, seed) => (
+                        <path
+                          key={seed}
+                          d={path}
+                          strokeWidth={2 * (3 + energy * (seed + 1))}
                         />
                       ))}
                     </g>
-                    <g fill={color}>
-                      {district.lights.map(([x, y, seed], i) => (
-                        <circle
-                          key={i}
-                          cx={x}
-                          cy={y}
-                          r={0.8 + energy * (0.3 + (seed % 3) * 0.3)}
-                          opacity={brightness}
+                    <g
+                      fill="none"
+                      stroke={color}
+                      strokeLinecap="round"
+                      opacity={brightness}
+                    >
+                      {district.lights.map((path, seed) => (
+                        <path
+                          key={seed}
+                          d={path}
+                          strokeWidth={2 * (0.8 + energy * (0.3 + seed * 0.3))}
                         />
                       ))}
                     </g>
@@ -228,14 +256,72 @@ export function MapScene(props: SceneProps) {
                       r={45 + energy * 65}
                       fill={color}
                       opacity={brightness * 0.035}
-                      filter="url(#halo)"
+                      filter={`url(#${svgId}-halo)`}
                     />
                   </>
+                )}
+                {onSelect && props.interactionMode === "power" && (
+                  <path
+                    d={`${district.minor} ${district.major}`}
+                    fill="none"
+                    stroke="transparent"
+                    strokeWidth={14 / zoom}
+                    pointerEvents="stroke"
+                  />
                 )}
               </g>
             );
           })}
-          {labels &&
+          {map.districts.map(
+            (district, index) =>
+              district.blocks && (
+                <BuildingBlocks
+                  key={district.name}
+                  region={district.name}
+                  batches={district.blocks}
+                  powered={enabled.includes(district.name)}
+                  focused={!selected || selected === district.name}
+                  brightness={
+                    (districtPower(props.envelopes, frame, index, sensitivity) *
+                      intensity) /
+                    100
+                  }
+                  color={districtLightColor(
+                    index,
+                    theme,
+                    colorMode,
+                    lightColor,
+                  )}
+                />
+              ),
+          )}
+          {props.ripple &&
+            map.districts
+              .filter((d) => d.name === props.ripple?.district)
+              .map((d) => (
+                <g
+                  key={props.ripple!.id}
+                  transform={`translate(${d.point[0]} ${d.point[1]})`}
+                  pointerEvents="none"
+                  aria-hidden="true"
+                  data-testid="district-ripple"
+                >
+                  <circle
+                    className="district-ripple"
+                    r="24"
+                    fill="none"
+                    stroke={gold}
+                    strokeWidth="3"
+                  />
+                  <circle
+                    className="district-ripple ripple-inner"
+                    r="12"
+                    fill={gold}
+                    opacity="0.35"
+                  />
+                </g>
+              ))}
+          {(labels || onSelect) &&
             map.districts.map((d, i) => (
               <g
                 key={d.name}
@@ -244,7 +330,14 @@ export function MapScene(props: SceneProps) {
                 style={{ cursor: onSelect ? "pointer" : "default" }}
                 role={onSelect ? "button" : undefined}
                 tabIndex={onSelect ? 0 : undefined}
-                aria-label={`Focus ${d.name}`}
+                aria-label={`${props.interactionMode === "power" ? "Toggle power in" : props.interactionMode === "ripple" ? "Ripple in" : "Focus"} ${d.name}`}
+                aria-pressed={
+                  props.interactionMode === "power"
+                    ? enabled.includes(d.name)
+                    : props.interactionMode === "focus"
+                      ? selected === d.name
+                      : undefined
+                }
                 onKeyDown={(e) => {
                   if (e.key === "Enter" || e.key === " ") {
                     e.preventDefault();
@@ -257,7 +350,21 @@ export function MapScene(props: SceneProps) {
                   y="-25"
                   width="152"
                   height="51"
-                  fill="transparent"
+                  rx="8"
+                  fill={
+                    props.interactionMode === "power"
+                      ? "#101a15"
+                      : "transparent"
+                  }
+                  fillOpacity={props.interactionMode === "power" ? 0.9 : 1}
+                  stroke={
+                    props.interactionMode === "power"
+                      ? enabled.includes(d.name)
+                        ? gold
+                        : "#596159"
+                      : "none"
+                  }
+                  strokeOpacity="0.6"
                 />
                 <circle
                   r="3"
@@ -275,26 +382,39 @@ export function MapScene(props: SceneProps) {
                   strokeOpacity="0.35"
                   fill="none"
                 />
-                <text
-                  x="0"
-                  y="-19"
-                  textAnchor="middle"
-                  fill={selected === d.name ? "#fff1d7" : "#c5c8bc"}
-                  fontSize={14}
-                  letterSpacing="2.5"
-                  paintOrder="stroke"
-                  stroke="#142019"
-                  strokeWidth="4"
-                >
-                  {d.name.toUpperCase()}
-                </text>
+                {labels && (
+                  <text
+                    x="0"
+                    y="-19"
+                    textAnchor="middle"
+                    fill={selected === d.name ? "#fff1d7" : "#c5c8bc"}
+                    fontSize={14}
+                    letterSpacing="2.5"
+                    paintOrder="stroke"
+                    stroke="#142019"
+                    strokeWidth="4"
+                  >
+                    {d.name.toUpperCase()}
+                  </text>
+                )}
+                {onSelect && props.interactionMode === "power" && (
+                  <text
+                    y="20"
+                    textAnchor="middle"
+                    fontSize="11"
+                    fontWeight="600"
+                    fill={enabled.includes(d.name) ? gold : "#a6afa2"}
+                  >
+                    {enabled.includes(d.name) ? "ON" : "OFF"}
+                  </text>
+                )}
               </g>
             ))}
         </g>
         <rect
           width="1600"
           height="900"
-          fill="url(#vignette)"
+          fill={`url(#${svgId}-vignette)`}
           pointerEvents="none"
         />
         {theme === "christmas" && particles && (

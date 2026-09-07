@@ -12,7 +12,12 @@ Built with React, Vite, Remotion, and OpenStreetMap data.
 - 🌆 **Multiple atmospheres** — City lights, Christmas (with snow), Moonlight, and Rain (with rain streaks)
 - 🏘️ **Building footprints** — Mapped buildings light up with their district’s streets, using the chosen color and music response in both preview and MP4 exports
 - 🗺️ **Philippine map search** — Search cities, towns, and landmarks via Photon + OpenStreetMap
-- 🎥 **Video export** — Render your mix as an MP4 using Remotion (local rendering)
+- 🎥 **Browser video export** — Render MP4 or WebM on your device with `@remotion/web-renderer`, including progress, cancellation, and download
+- **Starting choices** — Play the included demo, upload audio, or paste a YouTube video URL
+- **Surprise me + Undo** — Explore another Philippine place with randomized lighting, then restore the previous scene without changing music
+- **District tap modes** — Send a light ripple, focus a district, or toggle its power
+- **Visible-area 3D** — Raise buildings across all visible districts into blocks with music-reactive roofs and windows. Only the loaded map area is used; heights are illustrative.
+- **YouTube feedback** — Visible player, video details, simulated-rhythm explanation, loading timeout, and retry
 - ✨ **Modern glassy UI** — Icon-only controls with tooltips, GSAP animations, smooth interactions
 - 📱 **Responsive** — Works in desktop and mobile viewports
 - ♿ **Accessible** — Proper ARIA labels, keyboard support (space to play/pause)
@@ -35,11 +40,14 @@ An original ambient demo track is included. Drop your own MP3, WAV, or M4A (up t
 
 ## How to Use
 
-1. **Play or upload** — Hit play or drag & drop / browse for your soundtrack anywhere on the map.
+1. **Choose music** — Select Play demo, Upload audio, or Paste YouTube URL. Drag and drop also accepts audio files. YouTube uses a simulated rhythm; uploaded audio drives real beat response.
 2. **Choose an atmosphere** — Switch between City lights, Christmas, Moonlight, or Rain in the floating dock.
 3. **Adjust & explore** — Open settings (sliders icon) to tweak intensity, sensitivity, toggle map labels, weather particles, or disconnect districts.
 4. **Pan & zoom** — Drag the map to pan. Use the zoom and reset buttons in the bottom-right.
-5. **Export** — Click the export button (top right) → choose resolution & duration → Render video. Files are saved to `exports/`.
+5. **Play with the map** — Select Ripple, Focus, or Power and tap a district label. Surprise me changes your place and lighting; Undo restores the previous visual settings.
+6. **Export** — Click Export video → choose MP4 or WebM, resolution, and duration → Create video → Download video. Rendering happens in the browser; no audio upload or render server is used. YouTube exports are silent. Preview mute does not mute exported audio.
+
+Use **3D buildings** to raise buildings across the visible districts. Power mode toggles each district independently by tapping its roofs or walls. Panning, zooming, and loading another place keep the 3D setting; only buildings in the current view are rendered. The 3D view is included in video exports.
 
 Use **Cancel export** in the export panel to stop an export, including while it
 is preparing. Once cancellation finishes, you can start another video.
@@ -47,10 +55,10 @@ is preparing. Once cancellation finishes, you can start another video.
 ## Tech Stack
 
 - React 19 + Vite
-- Remotion (Player + Renderer) for video export
+- Remotion Player for preview; `@remotion/web-renderer` and `@remotion/media` for browser export
 - GSAP for UI animations
 - Phosphor Icons
-- Express backend for audio analysis + Remotion rendering
+- Browser AudioContext for audio analysis; Express for map data and the retained legacy export API
 - OpenStreetMap + Overpass + Photon geocoding (PH filtered)
 
 ## Project Structure
@@ -59,6 +67,10 @@ is preparing. Once cancellation finishes, you can start another video.
 src/
   App.tsx              # Main UI, transport, settings, export flow
   MapScene.tsx         # The Remotion scene (shared by preview + export)
+  ExportScene.tsx      # Export composition with @remotion/media audio
+  useVideoExport.ts    # Browser rendering, compatibility, progress, cancellation
+  useSurprise.ts       # Random location and lighting with visual-only Undo
+  youtube.mjs         # URL validation and recoverable YouTube API loading
   audio-analysis.mjs   # Real-time + export audio envelope extraction
   scene-effects.mjs    # District lighting + particle logic
   useMapArea.ts        # Geocoding + map data loading
@@ -75,7 +87,17 @@ npm start
 npm test
 ```
 
-Video exports are rendered locally using Remotion. Requires a Chromium-based browser.
+Video exports use WebCodecs through `@remotion/web-renderer`. Browser support is checked before each render; if MP4 is unavailable, choose WebM. Use HTTPS or localhost and keep the tab open until rendering finishes. Export takes a snapshot of the current scene and owns its audio URL, so editing or replacing the soundtrack during rendering does not change that export.
+
+Run the browser feature and real export checks with the studio running:
+
+```bash
+CHROME_BIN=/usr/bin/google-chrome npx playwright test tests/experience.spec.mjs --workers=1
+```
+
+Omit `CHROME_BIN` to use Playwright’s installed Chromium. `TEST_BASE_URL` selects a different local server. The checks cover source choices, YouTube error recovery, Surprise/Undo, district interactions, mobile layout, and a decoded browser export with audio.
+
+The following older scripts exercise the retained **server export API**, which the app UI no longer calls:
 
 With the studio running, `npm run test:export-colors` renders two short MP4s and
 checks that their decoded frames contain the requested custom colors. Set

@@ -93,6 +93,7 @@ export function useMapArea(
             )
             .map((d) => d.name),
         }));
+        return map;
       } catch (e) {
         if (epoch === generation.current && !abort.signal.aborted)
           setError(
@@ -148,5 +149,12 @@ export function useMapArea(
     select: (location: LocationResult) => request(location),
     retry: () =>
       request(last.current.location, last.current.view, last.current.preserve),
+    cancel: () => {
+      controller.current?.abort();
+      generation.current++;
+      mode.current = "";
+      setBusy(false);
+      setError("");
+    },
   };
 }

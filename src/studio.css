@@ -280,7 +280,6 @@ main {
   color: #e2e7db;
   font-size: 12px;
   border-radius: 999px;
-  cursor: pointer;
   white-space: nowrap;
   background: #0f1613cc;
   border: 1px solid #2f3a32;
@@ -292,6 +291,26 @@ main {
 }
 .map-upload:active:not(:disabled) {
   transform: translateX(-50%) scale(0.985);
+}
+.map-upload-file,
+.map-upload-youtube {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.map-upload-file {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+}
+.map-upload-youtube {
+  color: var(--accent);
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 .browse-copy {
   color: #a9b29f;
@@ -1032,10 +1051,13 @@ main {
     min-height: 34px;
     gap: 9px;
   }
-  .map-upload > span {
+  .map-upload-file {
+    gap: 9px;
+  }
+  .map-upload-file > span {
     font-size: 0;
   }
-  .map-upload > span::before {
+  .map-upload-file > span::before {
     content: "Load audio";
     font-size: 10px;
   }

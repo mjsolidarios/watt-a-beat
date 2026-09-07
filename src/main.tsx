@@ -8,6 +8,7 @@ import "@fontsource/geist-mono/400.css";
 import { App } from "./App";
 import "./styles.css";
 import "./studio.css";
+import "./experience.css";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <IconContext.Provider value={{ weight: "fill" }}>

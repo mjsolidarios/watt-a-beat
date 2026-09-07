@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Player, type PlayerRef } from "@remotion/player";
 import {
   ArrowCounterClockwise,
+  ArrowRight,
   ArrowUpRight,
   ArrowsOut,
   Check,
@@ -23,12 +31,21 @@ import {
   Sparkle,
   Lightning,
   CloudRain,
+  Cube,
+  Shuffle,
+  HandTap,
   UploadSimple,
   X,
   YoutubeLogo,
 } from "@phosphor-icons/react";
 import { MapScene } from "./MapScene";
-import { defaultScene, type ColorMode, type SceneProps, type Theme } from "./types";
+import { PlaybackProgress, formatTime, usePlaybackPosition } from "./PlaybackProgress";
+import {
+  defaultScene,
+  type ColorMode,
+  type SceneProps,
+  type Theme,
+} from "./types";
 import { analyzeSamples } from "./audio-analysis.mjs";
 import { isLightColor } from "./scene-effects.mjs";
 import { useMapArea } from "./useMapArea";
@@ -36,32 +53,24 @@ import { useAudioPlayback } from "./useAudioPlayback";
 import { LocationSearch } from "./LocationSearch";
 import { TooltipLayer } from "./TooltipLayer";
 import gsap from "gsap";
+import { useVideoExport } from "./useVideoExport";
+import { useSurprise } from "./useSurprise";
+import {
+  extractYoutubeId,
+  ensureYoutubeApi,
+  youtubeErrorMessage,
+} from "./youtube.mjs";
 
-const formatTime = (s: number) =>
-  `${Math.floor(s / 60)
-    .toString()
-    .padStart(2, "0")}:${Math.floor(s % 60)
-    .toString()
-    .padStart(2, "0")}`;
 const themes: { id: Theme; name: string; desc: string }[] = [
   { id: "midnight", name: "City lights", desc: "Amber street lights" },
-  { id: "christmas", name: "Christmas", desc: "Red and green lights with snow" },
+  {
+    id: "christmas",
+    name: "Christmas",
+    desc: "Red and green lights with snow",
+  },
   { id: "moonlight", name: "Moonlight", desc: "Cool blue street lights" },
   { id: "rain", name: "Rain", desc: "Blue lights with rain" },
 ];
-
-function extractYoutubeId(url: string): string | null {
-  if (!url) return null;
-  const patterns = [
-    /(?:youtube\.com\/(?:[^/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{11})/i,
-    /^([A-Za-z0-9_-]{11})$/,
-  ];
-  for (const re of patterns) {
-    const m = url.match(re);
-    if (m) return m[1];
-  }
-  return null;
-}
 
 function createSyntheticEnvelopes(durationSec: number): number[][] {
   const frames = Math.max(1, Math.ceil(durationSec * 30));
@@ -69,12 +78,23 @@ function createSyntheticEnvelopes(durationSec: number): number[][] {
   for (let f = 0; f < frames; f++) {
     const t = f / 30;
     // Rhythmic pulses to simulate music energy
-    const beatPhase = ((t * 2.13) % 1);
-    const bassPulse = Math.pow(Math.max(0, Math.sin(beatPhase * Math.PI * 2)), 2.2);
+    const beatPhase = (t * 2.13) % 1;
+    const bassPulse = Math.pow(
+      Math.max(0, Math.sin(beatPhase * Math.PI * 2)),
+      2.2,
+    );
     const groove = 0.5 + 0.5 * Math.sin(t * 0.65);
     const bass = Math.min(1, 0.12 + bassPulse * (0.72 + groove * 0.22));
-    const mid = Math.min(1, 0.1 + (0.45 + 0.5 * Math.sin(t * 1.9 + 1)) * (0.38 + bassPulse * 0.25));
-    const treble = Math.min(1, 0.07 + Math.abs(Math.sin(t * 4.3)) * 0.32 + (Math.sin(t * 7.1) + 1) * 0.06);
+    const mid = Math.min(
+      1,
+      0.1 + (0.45 + 0.5 * Math.sin(t * 1.9 + 1)) * (0.38 + bassPulse * 0.25),
+    );
+    const treble = Math.min(
+      1,
+      0.07 +
+        Math.abs(Math.sin(t * 4.3)) * 0.32 +
+        (Math.sin(t * 7.1) + 1) * 0.06,
+    );
     result.push([bass, mid, treble]);
   }
   return result;
@@ -86,6 +106,9 @@ export function App() {
     y: number;
     pan: { x: number; y: number };
     scale: number;
+    pointerId: number;
+    district: string | null;
+    moved: boolean;
   } | null>(null);
   const [scene, setScene] = useState<SceneProps>(defaultScene);
   const sceneElement = useRef<HTMLDivElement>(null);
@@ -113,27 +136,32 @@ export function App() {
   const [loading, setLoading] = useState(true),
     [error, setError] = useState(""),
     [playing, setPlaying] = useState(false),
-    [frame, setFrame] = useState(0),
     [muted, setMuted] = useState(false),
     [dragging, setDragging] = useState(false);
+  const playbackPosition = usePlaybackPosition();
+  const { setFrame } = playbackPosition;
   const [youtubeId, setYoutubeId] = useState<string | null>(null);
   const [showYtInput, setShowYtInput] = useState(false);
   const [ytUrlInput, setYtUrlInput] = useState("");
+  const [ytError, setYtError] = useState("");
+  const [ytStatus, setYtStatus] = useState("Ready to play");
+  const ytHost = useRef<HTMLDivElement>(null);
+  const ytReadyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [interactionMode, setInteractionMode] = useState<
+    "ripple" | "focus" | "power"
+  >("ripple");
+  const [ripple, setRipple] = useState<{ district: string; id: number }>();
+  const [interactionMessage, setInteractionMessage] = useState("");
+  const [playDemoWhenReady, setPlayDemoWhenReady] = useState(false);
+  const surprise = useSurprise(scene, setScene, area);
+  const videoExport = useVideoExport();
+  const [exportFormat, setExportFormat] = useState<"mp4" | "webm">("mp4");
   const ytPlayerRef = useRef<any>(null);
   const ytSyncRaf = useRef<number>(0);
   const [modal, setModal] = useState(false),
     [help, setHelp] = useState(false),
     [resolution, setResolution] = useState("1080"),
-    [exportDuration, setExportDuration] = useState("full");
-  const [job, setJob] = useState<{
-    id: string;
-    status: string;
-    progress: number;
-    error?: string;
-  } | null>(null);
-  const cancelRequested = useRef(false);
-  const browserRecorderRef = useRef<MediaRecorder | null>(null);
-  const [exportError, setExportError] = useState("");
+    [exportDuration, setExportDuration] = useState("10");
   const player = useRef<PlayerRef>(null),
     upload = useRef<HTMLInputElement>(null),
     audioBytes = useRef<Blob | null>(null),
@@ -147,7 +175,9 @@ export function App() {
     scene.envelopes.length || Math.round(scene.duration * 30),
   );
   const totalFramesRef = useRef(totalFrames);
-  useEffect(() => { totalFramesRef.current = totalFrames; }, [totalFrames]);
+  useEffect(() => {
+    totalFramesRef.current = totalFrames;
+  }, [totalFrames]);
   const {
     audio: previewAudio,
     toggle: toggleAudio,
@@ -160,30 +190,6 @@ export function App() {
     onPlaying: setPlaying,
     onError: setError,
   });
-
-  // YouTube playback helpers (audio sourced live from YouTube, no download/extract)
-  const ensureYoutubeApi = () =>
-    new Promise<void>((resolve, reject) => {
-      const w = window as any;
-      if (w.YT && w.YT.Player) {
-        resolve();
-        return;
-      }
-      const tag = document.createElement("script");
-      tag.src = "https://www.youtube.com/iframe_api";
-      const first = document.getElementsByTagName("script")[0];
-      first?.parentNode?.insertBefore(tag, first);
-      const prev = w.onYouTubeIframeAPIReady;
-      w.onYouTubeIframeAPIReady = () => {
-        if (prev) prev();
-        resolve();
-      };
-      tag.onerror = () => reject(new Error("YT API load failed"));
-      // safety timeout
-      setTimeout(() => {
-        if (w.YT && w.YT.Player) resolve();
-      }, 8000);
-    });
 
   const stopYtSyncRef = useCallback(() => {
     if (ytSyncRaf.current) {
@@ -198,8 +204,8 @@ export function App() {
     const tf = totalFramesRef.current || totalFrames;
     const fr = Math.min(tf - 1, Math.max(0, Math.floor(t * 30)));
     setFrame(fr);
-    player.current?.seekTo(fr);
-  }, [totalFrames]);
+    if (player.current?.getCurrentFrame() !== fr) player.current?.seekTo(fr);
+  }, [totalFrames, setFrame]);
   const startYtSync = useCallback(() => {
     stopYtSyncRef();
     const tick = () => {
@@ -209,134 +215,152 @@ export function App() {
     ytSyncRaf.current = requestAnimationFrame(tick);
   }, [stopYtSyncRef, syncFrameFromYt]);
 
-  const loadYoutube = useCallback(async (rawUrl: string) => {
-    const id = extractYoutubeId(rawUrl.trim());
-    if (!id) {
-      setError("Enter a valid YouTube URL (youtu.be or youtube.com).");
-      return;
-    }
-    const loadToken = ++loadId.current;
-    setLoading(true);
-    setError("");
-    setShowYtInput(false);
-    setYtUrlInput("");
-    previewAudio.current?.pause();
-    stopYtSyncRef();
-    // teardown previous YT
-    if (ytPlayerRef.current) {
-      try { ytPlayerRef.current.destroy?.(); } catch {}
+  const loadYoutube = useCallback(
+    async (rawUrl: string) => {
+      const id = extractYoutubeId(rawUrl);
+      if (!id) {
+        setYtError("Enter a valid YouTube URL (youtu.be or youtube.com).");
+        setShowYtInput(true);
+        return;
+      }
+      const loadToken = ++loadId.current;
+      if (ytReadyTimer.current) clearTimeout(ytReadyTimer.current);
+      setLoading(true);
+      setPlaying(false);
+      setPlayDemoWhenReady(false);
+      setError("");
+      setYtError("");
+      setYtStatus("Connecting to YouTube…");
+      setShowYtInput(false);
+      setYtUrlInput(rawUrl.trim());
+      previewAudio.current?.pause();
+      stopYtSyncRef();
+      ytPlayerRef.current?.destroy?.();
       ytPlayerRef.current = null;
-    }
-    // teardown file
-    if (blobUrl.current) {
-      URL.revokeObjectURL(blobUrl.current);
+      if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
       blobUrl.current = "";
-    }
-    audioBytes.current = null;
-    setYoutubeId(id);
-    setTrack({ name: "Loading YouTube…", artist: "YouTube", isDemo: false });
-    // provisional scene (synthetic reactivity)
-    const provisionalDur = 120;
-    setScene((s) => ({
-      ...s,
-      audioSrc: "",
-      envelopes: createSyntheticEnvelopes(provisionalDur),
-      duration: provisionalDur,
-    }));
-    setFrame(0);
-    player.current?.seekTo(0);
-
-    // Ensure YT IFrame API is ready
-    try {
-      await ensureYoutubeApi();
-    } catch {
-      if (loadToken === loadId.current) {
-        setError("Could not load YouTube player.");
-        setLoading(false);
-      }
-      return;
-    }
-
-    // Find or create offscreen container for the player (we only need its audio)
-    let container = document.getElementById("yt-audio-host");
-    if (!container) {
-      container = document.createElement("div");
-      container.id = "yt-audio-host";
-      container.style.position = "absolute";
-      container.style.width = "1px";
-      container.style.height = "1px";
-      container.style.left = "-9999px";
-      container.style.top = "-9999px";
-      document.body.appendChild(container);
-    }
-
-    // Create the player
-    try {
-      ytPlayerRef.current = new (window as any).YT.Player("yt-audio-host", {
-        height: "1",
-        width: "1",
-        videoId: id,
-        playerVars: {
-          autoplay: 0,
-          controls: 0,
-          disablekb: 1,
-          fs: 0,
-          modestbranding: 1,
-          rel: 0,
-          iv_load_policy: 3,
-        },
-        events: {
-          onReady: (ev: any) => {
-            if (loadToken !== loadId.current) return;
-            const p = ev.target;
-            let dur = 0;
-            try { dur = p.getDuration() || 0; } catch {}
-            dur = Math.min(Math.max(dur || 120, 10), 600); // cap at 10 min
-            const data = p.getVideoData?.() || {};
-            const title = data.title || "YouTube audio";
-            const author = data.author || "YouTube";
-            setTrack({ name: title, artist: author, isDemo: false });
-            const envs = createSyntheticEnvelopes(dur);
-            setScene((s) => ({
-              ...s,
-              audioSrc: "",
-              envelopes: envs,
-              duration: dur,
-            }));
-            setFrame(0);
-            player.current?.seekTo(0);
-            if (muted) { try { p.mute?.(); } catch {} }
-            setLoading(false);
-          },
-          onStateChange: (ev: any) => {
-            if (loadToken !== loadId.current) return;
-            const YT = (window as any).YT;
-            const state = ev.data;
-            if (state === YT.PlayerState.PLAYING) {
-              setPlaying(true);
-              startYtSync();
-            } else if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.ENDED || state === YT.PlayerState.BUFFERING) {
-              setPlaying(false);
-              stopYtSyncRef();
-              syncFrameFromYt();
-            }
-          },
-          onError: (ev: any) => {
-            if (loadToken !== loadId.current) return;
-            setError("YouTube player error (video may be unavailable or restricted).");
-            setLoading(false);
-            setYoutubeId(null);
-          },
-        },
+      audioBytes.current = null;
+      setYoutubeId(id);
+      setTrack({
+        name: "Loading video details…",
+        artist: "YouTube",
+        isDemo: false,
       });
-    } catch (e) {
-      if (loadToken === loadId.current) {
-        setError("Failed to initialize YouTube playback.");
+      setScene((s) => ({
+        ...s,
+        audioSrc: "",
+        envelopes: createSyntheticEnvelopes(120),
+        duration: 120,
+      }));
+      setFrame(0);
+      player.current?.seekTo(0);
+      const fail = (message: string) => {
+        if (loadToken !== loadId.current) return;
+        if (ytReadyTimer.current) clearTimeout(ytReadyTimer.current);
+        setYtError(message);
+        setYtStatus("Unable to play");
         setLoading(false);
-        setYoutubeId(null);
+        setPlaying(false);
+        stopYtSyncRef();
+        ytPlayerRef.current?.destroy?.();
+        ytPlayerRef.current = null;
+      };
+      try {
+        await ensureYoutubeApi();
+        if (loadToken !== loadId.current) return;
+        // React owns the outer host; YouTube may replace only its inner child.
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
+        if (loadToken !== loadId.current || !ytHost.current) return;
+        ytHost.current.replaceChildren();
+        const element = document.createElement("div");
+        ytHost.current.appendChild(element);
+        setYtStatus("Loading video…");
+        ytReadyTimer.current = setTimeout(
+          () =>
+            fail(
+              "This video took too long to load. Retry or choose another URL.",
+            ),
+          15000,
+        );
+        const refreshDetails = (p: any) => {
+          const data = p.getVideoData?.() || {};
+          setTrack({
+            name: data.title || "YouTube video",
+            artist: data.author || "YouTube",
+            isDemo: false,
+          });
+          const duration = p.getDuration?.();
+          if (Number.isFinite(duration) && duration > 0) {
+            setScene((s) =>
+              Math.abs(s.duration - duration) < 0.05
+                ? s
+                : {
+                    ...s,
+                    envelopes: createSyntheticEnvelopes(duration),
+                    duration,
+                  },
+            );
+          }
+        };
+        ytPlayerRef.current = new (window as any).YT.Player(element, {
+          height: "200",
+          width: "100%",
+          videoId: id,
+          playerVars: {
+            autoplay: 0,
+            controls: 1,
+            playsinline: 1,
+            rel: 0,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: (ev: any) => {
+              if (loadToken !== loadId.current) return;
+              if (ytReadyTimer.current) clearTimeout(ytReadyTimer.current);
+              refreshDetails(ev.target);
+              setYtStatus("Ready to play");
+              setLoading(false);
+            },
+            onStateChange: (ev: any) => {
+              if (loadToken !== loadId.current) return;
+              const state = ev.data;
+              if (state === 1) {
+                refreshDetails(ev.target);
+                setYtStatus("Playing");
+                setPlaying(true);
+                startYtSync();
+              } else {
+                setYtStatus(
+                  state === 3
+                    ? "Buffering…"
+                    : state === 0
+                      ? "Finished"
+                      : "Paused",
+                );
+                setPlaying(false);
+                stopYtSyncRef();
+                syncFrameFromYt();
+              }
+            },
+            onAutoplayBlocked: () => {
+              if (loadToken === loadId.current)
+                setYtStatus("Press play in the video to begin.");
+            },
+            onError: (ev: any) => fail(youtubeErrorMessage(ev.data)),
+          },
+        });
+      } catch (e) {
+        fail(
+          e instanceof Error
+            ? e.message
+            : "Couldn’t connect to YouTube. Please retry.",
+        );
       }
-    }
-  }, [stopYtSyncRef, startYtSync, syncFrameFromYt]);
+    },
+    [stopYtSyncRef, startYtSync, syncFrameFromYt],
+  );
 
   // Keep YT volume in sync with mute toggle
   useEffect(() => {
@@ -350,7 +374,7 @@ export function App() {
         p.setVolume?.(100);
       }
     } catch {}
-  }, [muted, youtubeId]);
+  }, [muted, youtubeId, loading]);
 
   const update = <K extends keyof SceneProps>(key: K, value: SceneProps[K]) =>
     setScene((s) => ({ ...s, [key]: value }));
@@ -362,8 +386,13 @@ export function App() {
       previewAudio.current?.pause();
       // Switch away from YouTube source
       setYoutubeId(null);
+      setYtError("");
+      setShowYtInput(false);
+      if (ytReadyTimer.current) clearTimeout(ytReadyTimer.current);
       if (ytPlayerRef.current) {
-        try { ytPlayerRef.current.destroy?.(); } catch {}
+        try {
+          ytPlayerRef.current.destroy?.();
+        } catch {}
         ytPlayerRef.current = null;
       }
       stopYtSyncRef();
@@ -374,9 +403,7 @@ export function App() {
         context = new AudioContext();
         const buffer = await context.decodeAudioData(await blob.arrayBuffer());
         if (buffer.duration > 300)
-          throw new Error(
-            "Choose a track no longer than 5 minutes.",
-          );
+          throw new Error("Choose a track no longer than 5 minutes.");
         const mono = new Float32Array(buffer.length);
         for (let c = 0; c < buffer.numberOfChannels; c++) {
           const channel = buffer.getChannelData(c);
@@ -404,11 +431,6 @@ export function App() {
         });
         setFrame(0);
         player.current?.seekTo(0);
-        setJob((j) =>
-          j && ["uploading", "queued", "rendering", "cancelling"].includes(j.status)
-            ? j
-            : null,
-        );
       } catch (e) {
         if (id === loadId.current)
           setError(
@@ -450,10 +472,13 @@ export function App() {
   useEffect(
     () => () => {
       loadId.current++;
+      if (ytReadyTimer.current) clearTimeout(ytReadyTimer.current);
       if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
       stopYtSyncRef();
       if (ytPlayerRef.current) {
-        try { ytPlayerRef.current.destroy?.(); } catch {}
+        try {
+          ytPlayerRef.current.destroy?.();
+        } catch {}
         ytPlayerRef.current = null;
       }
     },
@@ -466,7 +491,7 @@ export function App() {
     gsap.fromTo(
       el,
       { opacity: 0, y: 24 },
-      { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", delay: 0.15 }
+      { opacity: 1, y: 0, duration: 0.6, ease: "power3.out", delay: 0.15 },
     );
   }, []);
 
@@ -484,7 +509,7 @@ export function App() {
     });
   }, [playing, loading]);
   const togglePlay = useCallback(() => {
-    if (loading) return;
+    if (loading || (youtubeId && ytError)) return;
     if (youtubeId && ytPlayerRef.current) {
       const p = ytPlayerRef.current;
       const YT = (window as any).YT;
@@ -497,19 +522,22 @@ export function App() {
       return;
     }
     toggleAudio();
-  }, [loading, youtubeId, toggleAudio]);
+  }, [loading, youtubeId, ytError, toggleAudio]);
 
-  const seekToFrame = useCallback((requested: number) => {
-    const fr = Math.max(0, Math.min(totalFrames - 1, requested));
-    if (youtubeId && ytPlayerRef.current) {
-      const p = ytPlayerRef.current;
-      p.seekTo(fr / 30, true);
-      setFrame(fr);
-      player.current?.seekTo(fr);
-      return;
-    }
-    seekAudio(fr);
-  }, [youtubeId, totalFrames, seekAudio]);
+  const seekToFrame = useCallback(
+    (requested: number) => {
+      const fr = Math.max(0, Math.min(totalFrames - 1, requested));
+      if (youtubeId && ytPlayerRef.current) {
+        const p = ytPlayerRef.current;
+        p.seekTo(fr / 30, true);
+        setFrame(fr);
+        player.current?.seekTo(fr);
+        return;
+      }
+      seekAudio(fr);
+    },
+    [youtubeId, totalFrames, seekAudio],
+  );
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -536,339 +564,85 @@ export function App() {
     window.addEventListener("keydown", key);
     return () => window.removeEventListener("keydown", key);
   }, [togglePlay, modal, help, settingsOpen]);
-  useEffect(() => {
-    if (!job?.id || !["queued", "rendering", "cancelling"].includes(job.status))
-      return;
-    let active = true,
-      polling = false;
-    const interval = setInterval(async () => {
-      if (polling) return;
-      polling = true;
-      try {
-        const res = await fetch(`/api/exports/${job.id}`);
-        if (!res.ok) throw new Error("Could not check export progress.");
-        const result = await res.json();
-        if (active) {
-          setJob((j) => {
-            if (j?.id !== job.id || j.status !== job.status) return j;
-            if (j.status === "cancelling" && ["queued", "rendering"].includes(result.status))
-              return j;
-            return result;
-          });
-          setExportError("");
-        }
-      } catch (e) {
-        if (active)
-          setExportError(e instanceof Error ? e.message : "Connection lost");
-      } finally {
-        polling = false;
-      }
-    }, 1000);
-    return () => {
-      active = false;
-      clearInterval(interval);
-    };
-  }, [job?.id, job?.status]);
   const selectDistrict = useCallback(
-    (name: string) =>
-      setScene((s) => ({ ...s, selected: s.selected === name ? null : name })),
-    [],
+    (name: string) => {
+      if (interactionMode === "power") {
+        const powered = scene.enabled.includes(name);
+        setScene((s) => ({
+          ...s,
+          selected: null,
+          enabled: s.enabled.includes(name)
+            ? s.enabled.filter((n) => n !== name)
+            : [...s.enabled, name],
+        }));
+        setInteractionMessage(`${name}: power ${powered ? "off" : "on"}.`);
+      } else if (interactionMode === "focus") {
+        setScene((s) => ({
+          ...s,
+          selected: s.selected === name ? null : name,
+        }));
+        setInteractionMessage(`Focus changed: ${name}.`);
+      } else {
+        setRipple({ district: name, id: performance.now() });
+        setInteractionMessage(`Light ripple in ${name}.`);
+      }
+    },
+    [interactionMode, scene.enabled],
   );
   const inputProps = useMemo(
-    () => ({ ...scene, audioSrc: "", onSelect: selectDistrict, branding: false }),
-    [scene, selectDistrict],
-  );
-  const waveform = useMemo(
-    () =>
-      Array.from({ length: 120 }, (_, i) => {
-        const chunk =
-          scene.envelopes[
-            Math.min(
-              scene.envelopes.length - 1,
-              Math.floor((i * scene.envelopes.length) / 120),
-            )
-          ];
-        return chunk ? Math.max(0.08, ...chunk) : 0.15;
-      }),
-    [scene.envelopes],
+    () => ({
+      ...scene,
+      audioSrc: "",
+      onSelect: selectDistrict,
+      interactionMode,
+      ripple,
+      branding: false,
+    }),
+    [scene, selectDistrict, interactionMode, ripple],
   );
   const receiveFile = (file?: File) => {
     if (file) void loadAudio(file, file.name, false);
   };
-  const requestCancellation = async (id: string, previousStatus: string) => {
+  const playDemo = async () => {
+    if (track.isDemo && scene.audioSrc && !loading) {
+      void previewAudio.current
+        ?.play()
+        .catch(() => setError("Press play to start the demo."));
+      return;
+    }
+    const token = ++loadId.current;
+    setLoading(true);
+    setError("");
     try {
-      const res = await fetch(`/api/exports/${id}/cancel`, { method: "POST" });
-      const result = await res.json();
-      if (!res.ok)
-        throw new Error(result.error || "Could not cancel export. Try again.");
-      setJob((j) => (j?.id === id && j.status === "cancelling" ? result : j));
+      const response = await fetch("/after-hours.wav");
+      if (!response.ok)
+        throw new Error("Demo audio unavailable. Upload a track or try again.");
+      const blob = await response.blob();
+      if (token !== loadId.current) return;
+      setPlayDemoWhenReady(true);
+      await loadAudio(blob, "After hours", true);
     } catch (e) {
-      cancelRequested.current = false;
-      setExportError(
-        e instanceof Error ? e.message : "Could not cancel export. Try again.",
-      );
-      setJob((j) =>
-        j?.id === id && j.status === "cancelling"
-          ? { ...j, status: previousStatus }
-          : j,
-      );
-    }
-  };
-  const cancelExport = async () => {
-    if (!job || cancelRequested.current) return;
-    cancelRequested.current = true;
-    setExportError("");
-    setJob({ ...job, status: "cancelling" });
-    // Let the upload return its job ID so cancellation cannot orphan a render.
-    if (job.id) await requestCancellation(job.id, job.status);
-  };
-  const exportVideo = async () => {
-    if (!audioBytes.current) return;
-    cancelRequested.current = false;
-    setExportError("");
-    setJob({ id: "", status: "uploading", progress: 0 });
-    try {
-      const form = new FormData();
-      form.append("audio", audioBytes.current, "track.wav");
-      form.append(
-        "settings",
-        JSON.stringify({
-          ...scene,
-          mapData: undefined,
-          mapId: scene.mapData?.id,
-          audioSrc: "",
-          selected: null,
-          duration:
-            exportDuration === "full"
-              ? scene.duration
-              : Math.min(10, scene.duration),
-          resolution: Number(resolution),
-        }),
-      );
-      const res = await fetch("/api/exports", { method: "POST", body: form });
-      const result = await res.json();
-      if (!res.ok) {
-        // Server-side export not available (e.g. Vercel). Fall back to browser recording.
-        const msg = result?.error || "";
-        if (msg.includes("not available") || msg.includes("not supported") || res.status === 501) {
-          setJob(null);
-          void exportInBrowser();
-          return;
-        }
-        throw new Error(msg || "Export failed.");
-      }
-      if (cancelRequested.current) {
-        setJob({ ...result, status: "cancelling" });
-        await requestCancellation(result.id, result.status);
-      } else setJob(result);
-    } catch (e) {
-      // If server call itself fails (network, HTML instead of JSON, etc.), offer browser export
-      const message = e instanceof Error ? e.message : "Export failed.";
-      if (message.includes("JSON") || message.toLowerCase().includes("unexpected")) {
-        setJob(null);
-        void exportInBrowser();
-        return;
-      }
-      setJob({
-        id: "",
-        status: "failed",
-        progress: 0,
-        error: message || "Export failed. Please try again.",
-      });
-    }
-  };
-
-  const getSupportedMimeType = () => {
-    // Firefox does not support vp9 in MediaRecorder in many versions.
-    // Chrome supports vp9 well. We try high quality first, then fall back.
-    const candidates = [
-      "video/webm;codecs=vp9",
-      "video/webm;codecs=vp8",
-      "video/webm",
-    ];
-    for (const type of candidates) {
-      if (MediaRecorder.isTypeSupported(type)) {
-        return type;
+      if (token === loadId.current) {
+        setError(e instanceof Error ? e.message : "Couldn’t load the demo.");
+        setLoading(false);
       }
     }
-    return undefined;
   };
-
-  const exportInBrowser = async () => {
-    setExportError("");
-    setJob({ id: "browser", status: "recording", progress: 0 });
-
-    const durationSec =
-      exportDuration === "full" ? scene.duration : Math.min(10, scene.duration);
-    const targetWidth = resolution === "1080" ? 1920 : 1280;
-    const targetHeight = Number(resolution);
-
-    let exportCanvas: HTMLCanvasElement | null = null;
-    let audioEl: HTMLAudioElement | null = null;
-    let audioCtx: AudioContext | null = null;
-    let combinedStream: MediaStream | null = null;
-    let recorder: MediaRecorder | null = null;
-    let stopTimer: number | null = null;
-
-    try {
-      // Create high-resolution canvas for direct capture (no screen sharing)
-      exportCanvas = document.createElement("canvas");
-      exportCanvas.width = targetWidth;
-      exportCanvas.height = targetHeight;
-
-      const videoStream = exportCanvas.captureStream(30);
-
-      // Prepare audio for recording
-      audioEl = new Audio();
-      audioEl.src = URL.createObjectURL(audioBytes.current!);
-      audioEl.volume = muted ? 0 : 1;
-
-      audioCtx = new AudioContext();
-      const source = audioCtx.createMediaElementSource(audioEl);
-      const dest = audioCtx.createMediaStreamDestination();
-      source.connect(dest);
-      source.connect(audioCtx.destination); // also hear it while exporting
-
-      combinedStream = new MediaStream([
-        ...videoStream.getTracks(),
-        ...dest.stream.getTracks(),
-      ]);
-
-      const mimeType = getSupportedMimeType();
-      recorder = new MediaRecorder(combinedStream, mimeType ? { mimeType } : undefined);
-      browserRecorderRef.current = recorder;
-
-      const chunks: Blob[] = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
-      };
-
-      recorder.onstop = () => {
-        const actualType = recorder?.mimeType || mimeType || "video/webm";
-        const blob = new Blob(chunks, { type: actualType });
-
-        const ext = actualType.includes("mp4") ? "mp4" : "webm";
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `watt-a-beat-${(scene.mapData?.name || "map").toLowerCase().replace(/\s+/g, "-")}-${exportDuration}.${ext}`;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-        URL.revokeObjectURL(url);
-
-        // Cleanup
-        if (audioEl) {
-          audioEl.pause();
-          URL.revokeObjectURL(audioEl.src);
-        }
-        if (audioCtx) audioCtx.close().catch(() => {});
-        if (combinedStream) combinedStream.getTracks().forEach((t) => t.stop());
-
-        browserRecorderRef.current = null;
-        setJob(null);
-        setModal(false);
-      };
-
-      // Helper to rasterize current preview to the export canvas
-      const drawFrame = async () => {
-        if (!exportCanvas) return;
-        const ctx = exportCanvas.getContext("2d", { alpha: false })!;
-        ctx.fillStyle = "#101615";
-        ctx.fillRect(0, 0, targetWidth, targetHeight);
-
-        const svg = document.querySelector(".scene-player svg") as SVGSVGElement | null;
-        if (!svg) return;
-
-        const serializer = new XMLSerializer();
-        const svgString = serializer.serializeToString(svg);
-        const blob = new Blob([svgString], { type: "image/svg+xml" });
-        const url = URL.createObjectURL(blob);
-
-        await new Promise<void>((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
-            URL.revokeObjectURL(url);
-            resolve();
-          };
-          img.src = url;
-        });
-      };
-
-      recorder.start();
-
-      // Pause normal playback and take control
-      previewAudio.current?.pause();
-      player.current?.seekTo(0);
-
-      // Start audio (muted visually if needed, but we capture the stream)
-      await audioEl.play();
-
-      // Drive export by advancing time and capturing frames
-      const startTime = performance.now();
-      const tick = async () => {
-        if (!recorder || recorder.state !== "recording") return;
-
-        const elapsed = (performance.now() - startTime) / 1000;
-        if (elapsed >= durationSec) {
-          if (recorder.state === "recording") recorder.stop();
-          return;
-        }
-
-        const currentFrame = Math.floor(elapsed * 30);
-        player.current?.seekTo(currentFrame);
-
-        // Wait for React/Remotion to render the frame
-        await new Promise((r) => requestAnimationFrame(r));
-        await new Promise((r) => requestAnimationFrame(r));
-
-        await drawFrame();
-
-        // Update rough progress
-        setJob((j) =>
-          j ? { ...j, progress: Math.min(0.99, elapsed / durationSec) } : j
-        );
-
-        requestAnimationFrame(tick);
-      };
-
-      // Start the capture loop
-      requestAnimationFrame(tick);
-
-      // Safety timeout
-      stopTimer = window.setTimeout(() => {
-        if (recorder && recorder.state === "recording") {
-          recorder.stop();
-        }
-      }, (durationSec + 1) * 1000);
-
-    } catch (e) {
-      // Cleanup on error
-      if (audioEl) {
-        audioEl.pause();
-        if (audioEl.src) URL.revokeObjectURL(audioEl.src);
-      }
-      if (audioCtx) audioCtx.close().catch(() => {});
-      if (combinedStream) combinedStream.getTracks().forEach((t) => t.stop());
-      if (stopTimer) clearTimeout(stopTimer);
-      browserRecorderRef.current = null;
-
-      if ((e as Error)?.name === "NotAllowedError") {
-        setExportError("Export cancelled.");
-      } else if (e instanceof Error && /unsupported codec|MediaRecorder/i.test(e.message)) {
-        setExportError("Your browser does not support video recording in this format. Try Chrome or Edge.");
-      } else {
-        setExportError(e instanceof Error ? e.message : "Could not export in browser.");
-      }
-      setJob(null);
-    }
+  useEffect(() => {
+    if (!playDemoWhenReady || loading || !scene.audioSrc || !track.isDemo)
+      return;
+    setPlayDemoWhenReady(false);
+    void previewAudio.current
+      ?.play()
+      .catch(() => setError("Demo ready. Press play to begin."));
+  }, [playDemoWhenReady, loading, scene.audioSrc, track.isDemo]);
+  const openYoutubeInput = () => {
+    setShowYtInput(true);
+    document.getElementById("youtube-url-input")?.focus();
   };
-  const exportBusy =
-    !!job &&
-    ["uploading", "queued", "rendering", "cancelling", "recording"].includes(job.status);
+  const exportBusy = videoExport.busy;
   return (
-    <div className="app-shell">
+    <div className={`app-shell${youtubeId ? " has-youtube" : ""}`}>
       <TooltipLayer />
       <audio
         ref={previewAudio}
@@ -877,7 +651,9 @@ export function App() {
         loop
         muted={muted}
         onError={() =>
-          setError("This audio could not be played. Try another MP3 or WAV file.")
+          setError(
+            "This audio could not be played. Try another MP3 or WAV file.",
+          )
         }
       />
       <input
@@ -922,7 +698,21 @@ export function App() {
           >
             <SlidersHorizontal size={21} />
           </button>
-          {/* Export button hidden for now — separate export server planned */} 
+          <button
+            type="button"
+            className="icon-button export-trigger"
+            aria-label={exportBusy ? "Export progress" : "Export video"}
+            data-tooltip={exportBusy ? "Export progress" : "Export video"}
+            aria-haspopup="dialog"
+            aria-expanded={modal}
+            onClick={() => setModal(true)}
+          >
+            {exportBusy ? (
+              <CircleNotch size={21} className="spin" />
+            ) : (
+              <DownloadSimple size={21} />
+            )}
+          </button>
         </div>
       </header>
       <main>
@@ -945,6 +735,7 @@ export function App() {
             onPointerDown={(e) => {
               if (
                 e.button !== 0 ||
+                !e.isPrimary ||
                 (e.target as Element).closest('button,a,input,[role="button"]')
               )
                 return;
@@ -956,13 +747,31 @@ export function App() {
                 y: e.clientY,
                 pan: scene.pan,
                 scale: rect.width / 1600,
+                pointerId: e.pointerId,
+                district: (() => {
+                  const element = (e.target as Element).closest(
+                    "[data-district],[data-building-district]",
+                  );
+                  return (
+                    element?.getAttribute("data-district") ??
+                    element?.getAttribute("data-building-district") ??
+                    null
+                  );
+                })(),
+                moved: false,
               };
               e.currentTarget.setPointerCapture(e.pointerId);
               setIsPanning(true);
             }}
             onPointerMove={(e) => {
               const gesture = panGesture.current;
-              if (!gesture) return;
+              if (!gesture || gesture.pointerId !== e.pointerId) return;
+              if (
+                !gesture.moved &&
+                Math.hypot(e.clientX - gesture.x, e.clientY - gesture.y) < 6
+              )
+                return;
+              gesture.moved = true;
               update("pan", {
                 x: Math.max(
                   -900,
@@ -980,9 +789,20 @@ export function App() {
                 ),
               });
             }}
-            onPointerUp={() => {
+            onPointerUp={(e) => {
+              const gesture = panGesture.current;
+              if (!gesture || gesture.pointerId !== e.pointerId) return;
               panGesture.current = null;
               setIsPanning(false);
+              if (e.currentTarget.hasPointerCapture(e.pointerId))
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              if (
+                !gesture.moved &&
+                gesture.district &&
+                interactionMode === "power"
+              ) {
+                selectDistrict(gesture.district);
+              }
             }}
             onPointerCancel={() => {
               panGesture.current = null;
@@ -1008,7 +828,10 @@ export function App() {
             </div>
             <LocationSearch
               current={scene.mapData?.name ?? ""}
-              onSelect={area.select}
+              onSelect={(location) => {
+                surprise.cancel();
+                void area.select(location);
+              }}
             />
             {(area.busy || area.error || scene.mapData?.roadCount === 0) && (
               <div
@@ -1030,24 +853,137 @@ export function App() {
                 )}
               </div>
             )}
-            <button
-              className="map-upload"
-              onClick={() => upload.current?.click()}
-              disabled={loading}
-              data-tooltip="Audio file (MP3/WAV/etc) or click YouTube icon for video link"
-            >
-              <UploadSimple size={21} />
-              <span>
-                {loading
-                  ? "Loading audio…"
-                  : dragging
-                    ? "Release to load audio"
-                    : "Drop an audio file on the map"}{" "}
-                <span className="browse-copy">
-                  or <u>browse files</u> · <u>YouTube</u>
-                </span>
+            <section className="start-toolbar" aria-label="Start creating">
+              <p className="start-hint">
+                Pick a place <ArrowRight /> Choose music <ArrowRight /> Watch it
+                light up
+              </p>
+              <div
+                className="source-choices"
+                role="group"
+                aria-label="Choose music"
+              >
+                <button
+                  className="demo-choice"
+                  onClick={() => void playDemo()}
+                  disabled={loading}
+                >
+                  <Play size={16} /> Play demo
+                </button>
+                <button
+                  onClick={() => upload.current?.click()}
+                  disabled={loading}
+                >
+                  <UploadSimple size={16} /> Upload audio
+                </button>
+                <button
+                  onClick={openYoutubeInput}
+                  aria-expanded={showYtInput}
+                  aria-controls="youtube-url-input"
+                >
+                  <YoutubeLogo size={18} /> Paste YouTube URL
+                </button>
+              </div>
+              <span className="drop-hint">
+                {dragging
+                  ? "Release to load your audio"
+                  : "You can also drop an audio file anywhere on the map."}
               </span>
-            </button>
+            </section>
+            <div className="explore-tools">
+              <div className="surprise-actions">
+                <button
+                  className="surprise-button"
+                  disabled={surprise.busy || area.busy}
+                  onClick={() => void surprise.surprise()}
+                >
+                  {surprise.busy ? (
+                    <CircleNotch className="spin" size={17} />
+                  ) : (
+                    <Shuffle size={17} />
+                  )}{" "}
+                  Surprise me
+                </button>
+                {surprise.canUndo && (
+                  <button disabled={surprise.busy} onClick={surprise.undo}>
+                    <ArrowCounterClockwise size={16} /> Undo
+                  </button>
+                )}
+              </div>
+              <div
+                className="map-modes"
+                role="group"
+                aria-label="Map interaction"
+              >
+                <HandTap size={17} />
+                {(["ripple", "focus", "power"] as const).map((mode) => (
+                  <button
+                    key={mode}
+                    aria-pressed={interactionMode === mode}
+                    onClick={() => {
+                      setInteractionMode(mode);
+                      setScene((s) => ({ ...s, selected: null }));
+                      setInteractionMessage(
+                        mode === "power"
+                          ? "Tap a district to switch its power on or off."
+                          : mode === "focus"
+                            ? "Tap a district to focus its lights."
+                            : "Tap a district to send a light ripple.",
+                      );
+                    }}
+                  >
+                    {mode === "ripple"
+                      ? "Ripple"
+                      : mode === "focus"
+                        ? "Focus"
+                        : "Power"}
+                  </button>
+                ))}
+              </div>
+              <p className="interaction-hint">
+                {interactionMode === "power"
+                  ? "Tap a street, building, or district label to switch power."
+                  : interactionMode === "focus"
+                    ? "Tap a district to focus its lights."
+                    : "Tap a district to send a light ripple."}
+              </p>
+              <div className="region-view-controls">
+                <button
+                  className="region-3d-button"
+                  aria-label="3D buildings"
+                  aria-pressed={!!scene.buildings3D}
+                  disabled={!scene.mapData || area.busy}
+                  data-tooltip={
+                    scene.buildings3D
+                      ? "Return visible buildings to 2D"
+                      : "Raise buildings in the visible map area. Heights are illustrative."
+                  }
+                  onClick={() => update("buildings3D", !scene.buildings3D)}
+                >
+                  <Cube size={18} /> 3D buildings
+                </button>
+                <span>Visible map area</span>
+              </div>
+              {scene.buildings3D && (
+                <p className="region-3d-hint" role="status">
+                  {scene.mapData?.districts.some((d) => d.buildings?.length)
+                    ? "Visible districts are in 3D. Powered buildings light up with the music."
+                    : "No building footprints are available in this area. Try another place."}
+                </p>
+              )}
+              {surprise.message && <p role="status">{surprise.message}</p>}
+              {surprise.error && <p role="alert">{surprise.error}</p>}
+              <span
+                className={
+                  interactionMode === "power" ? "power-feedback" : "sr-only"
+                }
+                role="status"
+              >
+                {interactionMode === "power"
+                  ? `${scene.enabled.length} of ${districtNames.length} districts on. ${interactionMessage}`
+                  : interactionMessage}
+              </span>
+            </div>
             {error && (
               <div className="map-error" role="alert">
                 {error}
@@ -1143,112 +1079,141 @@ export function App() {
                 : "1 km"}
             </div>
           </div>
-          <section className="transport" aria-label="Audio playback" ref={transportRef}>
+          {youtubeId && (
+            <aside className="youtube-source" aria-label="YouTube video">
+              <div className="youtube-video-host" ref={ytHost} />
+              <div className="youtube-details">
+                <span className="youtube-thumbnail">
+                  <YoutubeLogo size={24} aria-hidden="true" />
+                  <img
+                    key={youtubeId}
+                    src={`https://i.ytimg.com/vi/${youtubeId}/default.jpg`}
+                    alt="Video thumbnail"
+                    width="64"
+                    height="48"
+                    onError={(event) => {
+                      event.currentTarget.hidden = true;
+                    }}
+                  />
+                </span>
+                <div>
+                  <strong>{track.name}</strong>
+                  <span>{track.artist}</span>
+                </div>
+              </div>
+              <p role="status">{ytStatus}</p>
+              <p>Simulated rhythm · lights may not match the beat.</p>
+              {ytError && !showYtInput && (
+                <p role="alert" className="source-error">
+                  {ytError}
+                </p>
+              )}
+              <div className="youtube-actions">
+                {ytError && (
+                  <button
+                    onClick={() =>
+                      void loadYoutube(
+                        `https://www.youtube.com/watch?v=${youtubeId}`,
+                      )
+                    }
+                    disabled={loading}
+                  >
+                    Retry video
+                  </button>
+                )}
+                <button onClick={openYoutubeInput}>Change URL</button>
+                <a
+                  href={`https://www.youtube.com/watch?v=${youtubeId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Open on YouTube <ArrowUpRight size={13} />
+                </a>
+              </div>
+            </aside>
+          )}
+          <section
+            className="transport"
+            aria-label="Audio playback"
+            ref={transportRef}
+          >
             <div className="track-row">
               <div className="track-art">
                 <MusicNotes size={22} />
               </div>
               <div className="track-details">
                 <strong>
-                  {loading ? "Loading audio…" : track.name}
+                  {loading
+                    ? youtubeId
+                      ? ytStatus
+                      : "Loading audio…"
+                    : track.name}
                 </strong>
                 <span>
                   {track.artist}
                   {track.isDemo && <span className="demo-tag">DEMO</span>}
-                  {youtubeId && <span className="demo-tag" style={{borderColor:"#9a6b4a",color:"#d4a67f"}}>YOUTUBE</span>}
+                  {youtubeId && (
+                    <span
+                      className="demo-tag"
+                      style={{ borderColor: "#9a6b4a", color: "#d4a67f" }}
+                    >
+                      YOUTUBE
+                    </span>
+                  )}
                 </span>
               </div>
-              <button
-                className="icon-button"
-                aria-label="Replace soundtrack"
-                data-tooltip="Replace soundtrack"
-                onClick={() => upload.current?.click()}
-              >
-                <UploadSimple size={17} />
-              </button>
-              <button
-                className="icon-button"
-                aria-label="Load from YouTube"
-                data-tooltip="Load audio from a YouTube video URL"
-                onClick={() => {
-                  setShowYtInput((v) => {
-                    const next = !v;
-                    if (next) setYtUrlInput("");
-                    return next;
-                  });
-                }}
-              >
-                <YoutubeLogo size={17} />
-              </button>
             </div>
             {showYtInput && (
-              <div
-                style={{
-                  gridColumn: "1 / -1",
-                  display: "flex",
-                  gap: 8,
-                  alignItems: "center",
-                  margin: "8px 0 4px",
-                  padding: "6px 8px",
-                  background: "#0f1613",
-                  border: "1px solid #3a4639",
-                  borderRadius: 8,
+              <form
+                className="youtube-form"
+                noValidate
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!loading) void loadYoutube(ytUrlInput);
                 }}
               >
-                <input
-                  type="text"
-                  value={ytUrlInput}
-                  onChange={(e) => setYtUrlInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      void loadYoutube(ytUrlInput);
-                    }
-                    if (e.key === "Escape") {
-                      setShowYtInput(false);
-                    }
-                  }}
-                  placeholder="https://youtube.com/watch?v=... or youtu.be/..."
-                  style={{
-                    flex: 1,
-                    background: "transparent",
-                    border: "none",
-                    color: "inherit",
-                    fontSize: 12,
-                    outline: "none",
-                  }}
-                  autoFocus
-                />
-                <button
-                  onClick={() => void loadYoutube(ytUrlInput)}
-                  disabled={!ytUrlInput.trim() || loading}
-                  style={{
-                    fontSize: 11,
-                    padding: "4px 10px",
-                    borderRadius: 6,
-                    border: "1px solid #5c6b52",
-                    background: "#1f2923",
-                    color: "#d9e3d0",
-                  }}
-                >
-                  Load
-                </button>
-                <button
-                  onClick={() => {
-                    setShowYtInput(false);
-                    setYtUrlInput("");
-                  }}
-                  style={{
-                    fontSize: 11,
-                    padding: "4px 8px",
-                    borderRadius: 6,
-                    border: "1px solid #3a4639",
-                    background: "transparent",
-                    color: "#a3ac9f",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
+                <label htmlFor="youtube-url-input">YouTube video URL</label>
+                <div className="youtube-input-row">
+                  <input
+                    id="youtube-url-input"
+                    type="url"
+                    required
+                    autoFocus
+                    aria-label="YouTube video URL"
+                    aria-describedby="youtube-source-note"
+                    value={ytUrlInput}
+                    onChange={(e) => {
+                      setYtUrlInput(e.target.value);
+                      setYtError("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") {
+                        e.stopPropagation();
+                        setShowYtInput(false);
+                      }
+                    }}
+                    placeholder="https://youtube.com/watch?v=…"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!ytUrlInput.trim() || loading}
+                  >
+                    Load
+                  </button>
+                  <button type="button" onClick={() => setShowYtInput(false)}>
+                    Cancel
+                  </button>
+                </div>
+                <p id="youtube-source-note">
+                  YouTube uses a simulated rhythm. Upload audio for lights that
+                  match the beat.
+                </p>
+                {ytError && (
+                  <p role="alert" className="source-error">
+                    {ytError}
+                  </p>
+                )}
+              </form>
             )}
             <div className="waveform-row">
               <button
@@ -1266,36 +1231,13 @@ export function App() {
                   <Play size={19} weight="fill" />
                 )}
               </button>
-              <div className="waveform">
-                <div className="waveform-bars" aria-hidden="true">
-                  {waveform.map((v, i) => (
-                    <span
-                      key={i}
-                      style={{
-                        height: `${Math.max(10, v * 100)}%`,
-                        background:
-                          i / 120 < frame / totalFrames ? "#dfc48d" : undefined,
-                      }}
-                    />
-                  ))}
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max={totalFrames - 1}
-                  value={frame}
-                  aria-label="Playback position"
-                  onChange={(e) => seekToFrame(Number(e.target.value))}
-                />
-                <div
-                  className="playhead"
-                  style={{ left: `${(frame / totalFrames) * 100}%` }}
-                />
-              </div>
-              <span className="timecode">
-                {formatTime(frame / 30)}
-                <span> / {formatTime(scene.duration)}</span>
-              </span>
+              <PlaybackProgress
+                position={playbackPosition}
+                envelopes={scene.envelopes}
+                totalFrames={totalFrames}
+                duration={scene.duration}
+                onSeek={seekToFrame}
+              />
             </div>
             <div className="dock-themes">
               <button
@@ -1308,7 +1250,8 @@ export function App() {
                   if (youtubeId && ytPlayerRef.current) {
                     try {
                       ytPlayerRef.current.setVolume?.(next ? 0 : 100);
-                      if (next) ytPlayerRef.current.mute?.(); else ytPlayerRef.current.unMute?.();
+                      if (next) ytPlayerRef.current.mute?.();
+                      else ytPlayerRef.current.unMute?.();
                     } catch {}
                   }
                 }}
@@ -1458,7 +1401,8 @@ export function App() {
                       onChange={() => update("particles", !scene.particles)}
                     />
                     <p className="area-hint">
-                      Rain and snow animate while the track plays and appear in exports.
+                      Rain and snow animate while the track plays and appear in
+                      exports.
                     </p>
                   </>
                 )}
@@ -1554,135 +1498,132 @@ export function App() {
           </Modal>
         )}
       </main>
-      {/* Export UI hidden for now - separate export server planned in the future */}
-      {false && modal && (
-        <Modal onClose={() => setModal(false)} title="Export video">
-          <p className="modal-description">
-            Export your map and soundtrack as an MP4 video.
-          </p>
-          <label className="select-label">
-            Resolution
-            <select
-              aria-label="Resolution"
-              value={resolution}
-              disabled={exportBusy}
-              onChange={(e) => setResolution(e.target.value)}
-            >
-              <option value="1080">Full HD · 1920 × 1080</option>
-              <option value="720">HD · 1280 × 720</option>
-            </select>
-          </label>
-          <label className="select-label">
-            Duration
-            <select
-              aria-label="Duration"
-              value={exportDuration}
-              disabled={exportBusy}
-              onChange={(e) => setExportDuration(e.target.value)}
-            >
-              <option value="full">
-                Full soundtrack · {formatTime(scene.duration)}
-              </option>
-              <option value="10">First 10 seconds</option>
-            </select>
-          </label>
-          <div className="export-summary">
-            <span>Server MP4 (local only)</span>
-            <span>or Browser WebM</span>
-            <span>30 fps</span>
+      {modal && (
+        <Modal
+          onClose={() => setModal(false)}
+          title="Export video"
+          description="Create a video on your device. Keep this tab open while it renders."
+        >
+          <div className="export-options">
+            <label>
+              Format
+              <select
+                aria-label="Export format"
+                value={exportFormat}
+                disabled={exportBusy}
+                onChange={(e) =>
+                  setExportFormat(e.target.value as "mp4" | "webm")
+                }
+              >
+                <option value="mp4">MP4</option>
+                <option value="webm">WebM</option>
+              </select>
+            </label>
+            <label>
+              Resolution
+              <select
+                aria-label="Resolution"
+                value={resolution}
+                disabled={exportBusy}
+                onChange={(e) => setResolution(e.target.value)}
+              >
+                <option value="1080">1080p · Full HD</option>
+                <option value="720">720p · Smaller file</option>
+              </select>
+            </label>
+            <label>
+              Duration
+              <select
+                aria-label="Duration"
+                value={exportDuration}
+                disabled={exportBusy}
+                onChange={(e) => setExportDuration(e.target.value)}
+              >
+                <option value="10">First 10 seconds</option>
+                <option value="30">First 30 seconds</option>
+                <option value="full">
+                  Full track · {formatTime(scene.duration)}
+                </option>
+              </select>
+            </label>
           </div>
-          <p className="area-hint" style={{ marginTop: 4 }}>
-            High-quality MP4 requires running the full studio locally. Browser export captures the preview directly as WebM (no screen sharing).
-          </p> 
-          {job?.status === "failed" && (
-            <p role="alert" className="error-message">
-              {job!.error}
-            </p>
-          )}
-          {exportError && (
-            <p role="alert" className="error-message">{exportError}</p>
-          )}
-          {job?.status === "cancelled" && (
-            <p role="status" className="modal-description">
-              Export cancelled. You can start another video.
-            </p>
-          )}
-          {exportBusy ? (
-            <div className="render-progress" role="status">
-              <div>
-                <span>
-                  {job?.status === "cancelling"
-                    ? "Cancelling export…"
-                    : job?.status === "uploading"
-                    ? "Preparing audio…"
-                    : job?.status === "queued"
-                      ? "Starting export…"
-                      : job?.status === "recording"
-                        ? "Exporting in browser…"
-                        : "Rendering video…"}
-                </span> 
-                <span>{Math.round((job?.progress ?? 0) * 100)}%</span>
-              </div>
-              <progress max="1" value={job?.progress ?? 0} />
-              <small>
-                {job?.status === "recording"
-                  ? "Capturing preview + audio directly in the browser."
-                  : job?.status === "cancelling"
-                  ? "You can close this panel while cancellation finishes."
-                  : "You can close this panel while your video renders."}
-              </small> 
-              <button
-                className="render-again text-button"
-                onClick={job?.status === "recording" ? () => {
-                  const rec = browserRecorderRef.current;
-                  if (rec && rec.state === "recording") {
-                    rec.stop();
-                  } else {
-                    setJob(null);
-                  }
-                } : cancelExport} 
-                disabled={job?.status === "cancelling"}
-              >
-                {job?.status === "recording" ? "Stop export" : job?.status === "cancelling" ? "Cancelling…" : "Cancel export"} 
-              </button>
-            </div>
-          ) : job?.status === "done" ? (
-            <div>
-              <a
-                className="primary-action"
-                href={`/api/exports/${job!.id}/download`}
-                download
-              >
-                <DownloadSimple size={18} /> Download video
-              </a>
-              <button
-                className="render-again text-button"
-                onClick={() => setJob(null)}
-              >
-                Create another video
-              </button>
-            </div>
-          ) : (
+          <p className="export-source-note">
+            {youtubeId
+              ? "YouTube video exports are silent and use the simulated rhythm. Upload an audio file to include sound and real beat response."
+              : "Includes your soundtrack and current map, colors, and effects. Preview mute does not mute the exported video."}
+          </p>
+          <div
+            className="export-feedback"
+            role={videoExport.state.status === "failed" ? "alert" : "status"}
+          >
+            {videoExport.state.message}
+          </div>
+          {exportBusy && (
             <>
-              <button className="primary-action" onClick={exportVideo}>
-                <ArrowUpRight size={18} /> Export video
-              </button>
+              <progress
+                aria-label="Video export progress"
+                max="1"
+                value={videoExport.state.progress}
+              />
+              <p>
+                {Math.round(videoExport.state.progress * 100)}% complete. You
+                can close this panel and keep exploring.
+              </p>
               <button
                 className="text-button"
-                style={{ marginTop: 8 }}
-                onClick={exportInBrowser}
+                disabled={videoExport.state.status === "cancelling"}
+                onClick={videoExport.cancel}
               >
-                Export in browser (WebM)
-              </button> 
+                Cancel export
+              </button>
             </>
+          )}
+          {!exportBusy && (
+            <div className="export-actions">
+              {videoExport.state.url && (
+                <a
+                  className="primary-action"
+                  href={videoExport.state.url}
+                  download={videoExport.state.filename}
+                >
+                  <DownloadSimple size={18} /> Download video
+                </a>
+              )}
+              <button
+                className={
+                  videoExport.state.url ? "text-button" : "primary-action"
+                }
+                disabled={
+                  loading ||
+                  !scene.mapData ||
+                  (!youtubeId && !audioBytes.current)
+                }
+                onClick={() => {
+                  previewAudio.current?.pause();
+                  ytPlayerRef.current?.pauseVideo?.();
+                  void videoExport.start(
+                    scene,
+                    audioBytes.current,
+                    Number(resolution),
+                    exportDuration === "full"
+                      ? scene.duration
+                      : Number(exportDuration),
+                    exportFormat,
+                  );
+                }}
+              >
+                {videoExport.state.url
+                  ? "Create another video"
+                  : videoExport.state.status === "failed"
+                    ? "Retry export"
+                    : "Create video"}
+              </button>
+            </div>
           )}
         </Modal>
       )}
       {help && (
-        <Modal
-          onClose={() => setHelp(false)}
-          title="How to use Watt a Beat"
-        >
+        <Modal onClose={() => setHelp(false)} title="How to use Watt a Beat">
           <div className="help-content">
             <p>
               Play the demo or load an audio file (or paste a YouTube URL). The
@@ -1693,13 +1634,16 @@ export function App() {
             </p>
             <p>
               Search for a place in the Philippines, drag to pan, and scroll to
-              zoom. Click a map label to focus on a district. Use Map settings
-              to adjust the lights or cut power to individual districts.
+              zoom. Use Ripple, Focus, or Power and tap a district label to play
+              with the lights. Surprise me changes your place and look; Undo
+              restores them. Use Map settings to adjust the lights or cut power
+              to individual districts.
             </p>
             <p>
               Choose City lights, Christmas, Moonlight, or Rain in the bottom
-              bar. Video export is planned for a future separate server.
-            </p> 
+              bar. Export an MP4 or WebM on your device. YouTube exports are
+              silent; upload audio to include a soundtrack.
+            </p>
             <p>
               Districts group nearby streets for the lighting effect. They do
               not represent official boundaries or live power outages.
@@ -1759,10 +1703,7 @@ function Toggle({
       onClick={onChange}
     >
       <span>{label}</span>
-      <span
-        aria-hidden="true"
-        className={`toggle ${checked ? "checked" : ""}`}
-      >
+      <span aria-hidden="true" className={`toggle ${checked ? "checked" : ""}`}>
         <span />
       </span>
     </button>
@@ -1803,7 +1744,7 @@ function ThemePicker({
         ease: "power2.out",
         stagger: 0.05,
         delay: 0.1,
-      }
+      },
     );
   }, []);
 
@@ -1852,7 +1793,10 @@ function Modal({
     const previousFocus = document.activeElement;
     dialog.showModal();
 
-    if (content && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    if (
+      content &&
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
       gsap.fromTo(
         content,
         { opacity: 0, y: 16, scale: 0.985 },
@@ -1863,7 +1807,7 @@ function Modal({
           duration: 0.38,
           ease: "power3.out",
           delay: 0.02,
-        }
+        },
       );
     }
     return () => {
