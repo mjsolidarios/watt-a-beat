@@ -1169,7 +1169,7 @@ export function App() {
           >
             <div className="track-row">
               <div className="track-art">
-                <MusicNotes size={22} />
+                <img src="/app-logo.svg" alt="" aria-hidden="true" />
               </div>
               <div className="track-details">
                 <strong>
@@ -1295,6 +1295,15 @@ export function App() {
                 onClick={() => update("buildings3D", !scene.buildings3D)}
               >
                 <Cube size={20} />
+              </button>
+              <button
+                className="queue-button"
+                aria-label="Open music queue"
+                onClick={() => setMixOpen(true)}
+              >
+                <SlidersHorizontal size={17} />
+                <span>Queue</span>
+                <strong>{sourceCount}</strong>
               </button>
             </div>
             <div className="transport-footer">
@@ -2127,6 +2136,7 @@ function ThemePicker({
           <span className={`theme-thumb ${option.id}`}>
             <ThemeIcon theme={option.id} />
           </span>
+          <span className="theme-label">{option.name}</span>
         </button>
       ))}
     </div>

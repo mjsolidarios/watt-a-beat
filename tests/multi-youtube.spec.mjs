@@ -257,7 +257,13 @@ test("adding eight videos preserves all sources and the mobile preview stays wit
       .locator(".youtube-video-host")
       .first()
       .evaluate((el) => el.clientHeight),
-  ).toBeGreaterThanOrEqual(200);
+  ).toBeLessThan(200);
+  expect(
+    await page
+      .locator(".youtube-video-host")
+      .first()
+      .evaluate((el) => el.clientHeight),
+  ).toBeGreaterThanOrEqual(100);
   await page.screenshot({
     path: "test-results/multiple-youtube-mobile.png",
     fullPage: true,

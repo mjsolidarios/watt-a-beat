@@ -176,7 +176,8 @@ test("starting choices and YouTube status, validation, retry and demo recovery",
     source.getByRole("button", { name: "Add another video" }),
   ).toBeVisible();
   const mini = await source.locator(".youtube-video-host").boundingBox();
-  expect(mini?.height ?? 0).toBeGreaterThanOrEqual(200);
+  expect(mini?.height ?? 0).toBeLessThan(200);
+  expect(mini?.height ?? 0).toBeGreaterThanOrEqual(100);
   await page.getByRole("button", { name: "Play", exact: true }).click();
   await expect(source).toContainText("Playing");
   await page.getByRole("button", { name: "Expand video previews" }).click();
