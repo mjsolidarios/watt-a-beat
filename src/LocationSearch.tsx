@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { usePresence } from "./usePresence";
 import {
   MagnifyingGlass,
   ArrowRight,
@@ -24,6 +25,7 @@ export function LocationSearch({
   const root = useRef<HTMLDivElement>(null),
     input = useRef<HTMLInputElement>(null),
     controller = useRef<AbortController | null>(null);
+  const resultsPanel = usePresence(open);
   useEffect(() => {
     const outside = (e: PointerEvent) => {
       if (!root.current?.contains(e.target as Node)) setOpen(false);
@@ -129,8 +131,10 @@ export function LocationSearch({
           )}
         </button>
       </form>
-      {open && (
-        <div className="location-results">
+      {resultsPanel.present && (
+        <div
+          className={`location-results${resultsPanel.leaving ? " is-leaving" : ""}`}
+        >
           <div className="search-scope">
             Philippines only{" "}
             <button

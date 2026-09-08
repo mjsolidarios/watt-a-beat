@@ -1,7 +1,7 @@
 /* Map-first studio, with controls floating above a single viewport. */
 .location-search {
   position: absolute;
-  z-index: 4;
+  z-index: 6;
   top: 22px;
   left: 25px;
   width: 310px;
@@ -14,9 +14,9 @@
   min-height: 45px;
   padding: 7px 10px 7px 14px;
   border: 1px solid #45543b;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: #101b14f5;
-  box-shadow: 0 6px 22px #07100836;
+  box-shadow: 0 6px 22px rgb(7 16 8 / 22%);
   color: #c4d0b8;
 }
 .location-search form:focus-within {
@@ -52,14 +52,22 @@
   background: #2b3825;
 }
 .location-results {
+  position: relative;
+  z-index: 5;
   margin-top: 7px;
   padding: 7px;
   border: 1px solid #4c5b42;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: #132017;
-  box-shadow: 0 12px 32px #0005;
+  box-shadow: 0 12px 32px rgb(8 14 10 / 40%);
   max-height: min(430px, 65dvh);
   overflow: auto;
+  transform-origin: top center;
+  animation: overlay-in var(--dur-long) var(--ease-out) both;
+}
+.location-results.is-leaving {
+  animation: overlay-out var(--dur-exit) var(--ease-in) both;
+  pointer-events: none;
 }
 .search-scope {
   display: flex;
@@ -168,11 +176,11 @@ body {
 }
 .header {
   height: 54px;
-  padding: 0 27px;
+  padding: 0 18px 0 22px;
   position: relative;
   z-index: 2;
-  background: #0f1713;
-  border-color: #344032;
+  background: #101714;
+  border-color: #2c362e;
 }
 .brand {
   font-size: 23px;
@@ -196,7 +204,21 @@ body {
   color: #aeb5a9;
 }
 .header-right {
-  gap: 22px;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid #314033;
+  border-radius: 12px;
+  background: #0c120f;
+}
+.header .icon-button {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  color: #c4cebb;
+}
+.header .icon-button:hover {
+  background: #1c2620;
+  color: #f3ead2;
 }
 .export-button {
   padding: 10px 23px;
@@ -337,7 +359,12 @@ main {
   border-radius: 8px;
   font-size: 11px;
   color: #f0c1ae;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+  box-shadow: 0 8px 20px rgb(18 10 8 / 35%);
+  animation: centered-in var(--dur-long) var(--ease-out) both;
+}
+.map-error.is-leaving {
+  animation: centered-out var(--dur-exit) var(--ease-in) both;
+  pointer-events: none;
 }
 .map-controls {
   top: auto;
@@ -351,7 +378,9 @@ main {
   width: 36px;
   height: 33px;
   color: #c5ccbb;
-  transition: background 0.12s ease, color 0.12s ease;
+  transition:
+    background var(--dur-short) var(--ease-out),
+    color var(--dur-short) var(--ease-out);
 }
 .map-controls button:hover {
   background: #1f2923;
@@ -437,7 +466,8 @@ main {
   height: 24px;
 }
 .dock-themes .theme-thumb svg,
-.dock-themes .volume-button svg {
+.dock-themes .volume-button svg,
+.dock-themes .region-3d-button svg {
   display: block;
   width: 20px;
   height: 20px;
@@ -538,8 +568,11 @@ main {
 .play-button {
   width: 36px;
   height: 36px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-  transition: transform 0.1s ease, background 0.12s ease, box-shadow 0.12s ease;
+  box-shadow: 0 1px 3px rgb(8 14 10 / 30%);
+  transition:
+    transform var(--dur-micro) var(--ease-out),
+    background var(--dur-short) var(--ease-out),
+    box-shadow var(--dur-short) var(--ease-out);
 }
 .play-button:hover:not(:disabled) {
   box-shadow: 0 4px 12px rgba(223,196,141,0.28);
@@ -570,10 +603,13 @@ main {
   background: #141c17;
   border: 1px solid #384339;
   border-radius: 18px;
-  box-shadow: 0 24px 70px #050b0866;
+  box-shadow:
+    inset 0 1px 0 rgb(231 240 218 / 8%),
+    0 24px 70px rgb(5 11 8 / 40%);
+  transform-origin: top right;
 }
 .settings-modal::backdrop {
-  background: #050a0738;
+  background: rgb(5 10 7 / 28%);
   backdrop-filter: none;
 }
 .settings-modal .modal-content {
@@ -915,7 +951,15 @@ main {
     gap: 8px;
   }
   .header-right {
-    gap: 12px;
+    gap: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    border-radius: 0;
+  }
+  .header .icon-button {
+    width: 36px;
+    height: 36px;
   }
   .map-caption {
     top: 16px;
@@ -979,21 +1023,25 @@ main {
   }
   .compass {
     right: 36px;
-    bottom: 299px;
+    bottom: 248px;
   }
   .map-controls {
     right: 22px;
-    bottom: 187px;
+    bottom: 214px;
   }
   .fullscreen-button {
     right: 23px;
-    bottom: 149px;
+    bottom: 176px;
   }
   .map-scale {
     display: none;
   }
   .focus-chip {
-    bottom: 171px;
+    bottom: 196px;
+  }
+  .region-3d-hint {
+    left: 18px;
+    bottom: 188px;
   }
 }
 @media (max-width: 520px) {
@@ -1007,9 +1055,11 @@ main {
     letter-spacing: -0.6px;
   }
   .brand-divider,
-  .brand-place,
-  .help-button {
+  .brand-place {
     display: none;
+  }
+  .help-button {
+    display: inline-flex;
   }
   .brand-symbol svg,
   .brand-logo {
@@ -1017,7 +1067,14 @@ main {
     height: 20px;
   }
   .header-right {
-    gap: 5px;
+    gap: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+  .header .icon-button {
+    width: 34px;
+    height: 34px;
   }
   .export-button {
     font-size: 10px;
@@ -1134,8 +1191,10 @@ main {
     width: 32px;
     height: 32px;
   }
-  .volume-button {
-    width: 25px;
+  .volume-button,
+  .dock-themes .region-3d-button {
+    width: 32px;
+    height: 32px;
   }
   .map-controls {
     right: 16px;

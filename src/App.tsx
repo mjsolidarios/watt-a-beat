@@ -1,11 +1,15 @@
 import {
+  createContext,
   useCallback,
+  useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
+  type RefObject,
 } from "react";
 import { Player, type PlayerRef } from "@remotion/player";
 import {
@@ -65,6 +69,7 @@ import { useVideoExport } from "./useVideoExport";
 import { useSurprise } from "./useSurprise";
 import { extractYoutubeId } from "./youtube.mjs";
 import { useYoutubeSources, MAX_YOUTUBE_SOURCES } from "./useYoutubeSources";
+import { motionMs, usePresence } from "./usePresence";
 
 const themes: { id: Theme; name: string; desc: string }[] = [
   { id: "midnight", name: "City lights", desc: "Amber street lights" },
@@ -129,7 +134,6 @@ export function App() {
   const [mixOpen, setMixOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [musicPanelOpen, toggleMusicPanel] = useHudOpen("watt.hud.music");
-  const [toolsPanelOpen, toggleToolsPanel] = useHudOpen("watt.hud.explore");
   const [youtubePreviewOpen, toggleYoutubePreview] =
     useHudOpen("watt.hud.youtube");
   const panGesture = useRef<{
@@ -233,6 +237,10 @@ export function App() {
   const [showYtInput, setShowYtInput] = useState(false);
   const [ytUrlInput, setYtUrlInput] = useState("");
   const [ytError, setYtError] = useState("");
+  const ytForm = usePresence(showYtInput);
+  const audioError = usePresence(!!error);
+  const audioErrorText = useRef(error);
+  if (error) audioErrorText.current = error;
   const [interactionMode, setInteractionMode] = useState<
     "ripple" | "focus" | "power"
   >("ripple");
@@ -497,11 +505,17 @@ export function App() {
     const btn = playBtnRef.current;
     if (!btn || loading) return;
     gsap.to(btn, {
-      scale: 0.88,
+      scale: 0.94,
       duration: 0.08,
       ease: "power2.in",
+      overwrite: true,
       onComplete: () => {
-        gsap.to(btn, { scale: 1, duration: 0.28, ease: "back.out(2)" });
+        gsap.to(btn, {
+          scale: 1,
+          duration: 0.22,
+          ease: "power3.out",
+          overwrite: true,
+        });
       },
     });
   }, [playing, loading]);
@@ -529,6 +543,7 @@ export function App() {
         togglePlay();
       }
       if (e.key === "Escape") {
+        if (document.querySelector("dialog[open]")) return;
         setModal(false);
         setHelp(false);
         setSettingsOpen(false);
@@ -689,7 +704,7 @@ export function App() {
             <span className="brand-name">Watt a Beat</span>
           </span>
           <span className="brand-divider" />
-          <span className="brand-place" data-tooltip={scene.mapData?.name}>
+          <span className="brand-place">
             {scene.mapData?.name ?? "Philippines"}
           </span>
         </a>
@@ -941,114 +956,29 @@ export function App() {
                 </span>
               </button>
             </HudPanel>
-            <HudPanel
-              className="explore-tools"
-              label="Map tools"
-              bodyId="map-tools-body"
-              open={toolsPanelOpen}
-              onToggle={toggleToolsPanel}
-              restoreLabel="Map tools"
-              restoreIcon={<HandTap size={16} aria-hidden="true" />}
-              hideLabel="Hide map tools"
-              showLabel="Show map tools"
-              header={<p className="hud-title">Map tools</p>}
-            >
-              <div className="surprise-actions">
-                <button
-                  className="surprise-button"
-                  disabled={surprise.busy || area.busy}
-                  onClick={() => void surprise.surprise()}
-                >
-                  {surprise.busy ? (
-                    <CircleNotch className="spin" size={17} />
-                  ) : (
-                    <Shuffle size={17} />
-                  )}{" "}
-                  Surprise me
-                </button>
-                {surprise.canUndo && (
-                  <button disabled={surprise.busy} onClick={surprise.undo}>
-                    <ArrowCounterClockwise size={16} /> Undo
-                  </button>
-                )}
-              </div>
-              <div
-                className="map-modes"
-                role="group"
-                aria-label="Map interaction"
-              >
-                <HandTap size={17} />
-                {(["ripple", "focus", "power"] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    aria-pressed={interactionMode === mode}
-                    onClick={() => {
-                      setInteractionMode(mode);
-                      setScene((s) => ({ ...s, selected: null }));
-                      setInteractionMessage(
-                        mode === "power"
-                          ? "Tap a district to switch its power on or off."
-                          : mode === "focus"
-                            ? "Tap a district to focus its lights."
-                            : "Tap a district to send a light ripple.",
-                      );
-                    }}
-                  >
-                    {mode === "ripple"
-                      ? "Ripple"
-                      : mode === "focus"
-                        ? "Focus"
-                        : "Power"}
-                  </button>
-                ))}
-              </div>
-              <p className="interaction-hint">
-                {interactionMode === "power"
-                  ? "Tap a street, building, or district label to switch power."
-                  : interactionMode === "focus"
-                    ? "Tap a district to focus its lights."
-                    : "Tap a district to send a light ripple."}
+            {scene.buildings3D && (
+              <p className="region-3d-hint" role="status">
+                {scene.mapData?.districts.some((d) => d.buildings?.length)
+                  ? "Visible districts are in 3D. Powered buildings light up with the music."
+                  : "No building footprints are available in this area. Try another place."}
               </p>
-              <div className="region-view-controls">
-                <button
-                  className="region-3d-button"
-                  aria-label="3D buildings"
-                  aria-pressed={!!scene.buildings3D}
-                  disabled={!scene.mapData || area.busy}
-                  data-tooltip={
-                    scene.buildings3D
-                      ? "Return visible buildings to 2D"
-                      : "Raise buildings in the visible map area. Heights are illustrative."
-                  }
-                  onClick={() => update("buildings3D", !scene.buildings3D)}
-                >
-                  <Cube size={18} /> 3D buildings
-                </button>
-                <span>Visible map area</span>
-              </div>
-              {scene.buildings3D && (
-                <p className="region-3d-hint" role="status">
-                  {scene.mapData?.districts.some((d) => d.buildings?.length)
-                    ? "Visible districts are in 3D. Powered buildings light up with the music."
-                    : "No building footprints are available in this area. Try another place."}
-                </p>
-              )}
-              {surprise.message && <p role="status">{surprise.message}</p>}
-              {surprise.error && <p role="alert">{surprise.error}</p>}
-              <span
-                className={
-                  interactionMode === "power" ? "power-feedback" : "sr-only"
-                }
-                role="status"
+            )}
+            <span
+              className={
+                interactionMode === "power" ? "power-feedback" : "sr-only"
+              }
+              role="status"
+            >
+              {interactionMode === "power"
+                ? `${scene.enabled.length} of ${districtNames.length} districts on. ${interactionMessage}`
+                : interactionMessage}
+            </span>
+            {audioError.present && audioErrorText.current && (
+              <div
+                className={`map-error${audioError.leaving ? " is-leaving" : ""}`}
+                role="alert"
               >
-                {interactionMode === "power"
-                  ? `${scene.enabled.length} of ${districtNames.length} districts on. ${interactionMessage}`
-                  : interactionMessage}
-              </span>
-            </HudPanel>
-            {error && (
-              <div className="map-error" role="alert">
-                {error}
+                {audioErrorText.current}
                 <button
                   className="icon-button"
                   aria-label="Dismiss audio error"
@@ -1105,16 +1035,11 @@ export function App() {
                 <Crosshair size={18} />
               </button>
             </div>
-            {scene.selected && (
-              <button
-                ref={focusChipRef}
-                className="focus-chip"
-                onClick={() => update("selected", null)}
-              >
-                {scene.selected}
-                <X size={12} />
-              </button>
-            )}
+            <FocusChip
+              name={scene.selected}
+              chipRef={focusChipRef}
+              onClear={() => update("selected", null)}
+            />
             <button
               className="fullscreen-button"
               aria-label="Fullscreen map"
@@ -1268,9 +1193,9 @@ export function App() {
                 </span>
               </div>
             </div>
-            {showYtInput && (
+            {ytForm.present && (
               <form
-                className="youtube-form"
+                className={`youtube-form${ytForm.leaving ? " is-leaving" : ""}`}
                 noValidate
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -1357,6 +1282,20 @@ export function App() {
                 theme={scene.theme}
                 onChange={(theme) => update("theme", theme)}
               />
+              <button
+                className="icon-button region-3d-button"
+                aria-label="3D buildings"
+                aria-pressed={!!scene.buildings3D}
+                disabled={!scene.mapData || area.busy}
+                data-tooltip={
+                  scene.buildings3D
+                    ? "Return visible buildings to 2D"
+                    : "Raise buildings in the visible map area. Heights are illustrative."
+                }
+                onClick={() => update("buildings3D", !scene.buildings3D)}
+              >
+                <Cube size={20} />
+              </button>
             </div>
             <div className="transport-footer">
               <span data-tooltip="Best experienced with headphones">
@@ -1382,6 +1321,73 @@ export function App() {
             onClose={() => setSettingsOpen(false)}
           >
             <aside className="sidebar">
+              <section
+                className="control-section map-tools-section"
+                data-panel="tools"
+                id="panel-tools"
+              >
+                <div className="section-label">
+                  <h3>Map tools</h3>
+                </div>
+                <div className="surprise-actions">
+                  <button
+                    className="surprise-button"
+                    disabled={surprise.busy || area.busy}
+                    onClick={() => void surprise.surprise()}
+                  >
+                    {surprise.busy ? (
+                      <CircleNotch className="spin" size={17} />
+                    ) : (
+                      <Shuffle size={17} />
+                    )}{" "}
+                    Surprise me
+                  </button>
+                  {surprise.canUndo && (
+                    <button disabled={surprise.busy} onClick={surprise.undo}>
+                      <ArrowCounterClockwise size={16} /> Undo
+                    </button>
+                  )}
+                </div>
+                <div
+                  className="map-modes"
+                  role="group"
+                  aria-label="Map interaction"
+                >
+                  <HandTap size={17} />
+                  {(["ripple", "focus", "power"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      aria-pressed={interactionMode === mode}
+                      onClick={() => {
+                        setInteractionMode(mode);
+                        setScene((s) => ({ ...s, selected: null }));
+                        setInteractionMessage(
+                          mode === "power"
+                            ? "Tap a district to switch its power on or off."
+                            : mode === "focus"
+                              ? "Tap a district to focus its lights."
+                              : "Tap a district to send a light ripple.",
+                        );
+                      }}
+                    >
+                      {mode === "ripple"
+                        ? "Ripple"
+                        : mode === "focus"
+                          ? "Focus"
+                          : "Power"}
+                    </button>
+                  ))}
+                </div>
+                <p className="interaction-hint">
+                  {interactionMode === "power"
+                    ? "Tap a street, building, or district label to switch power."
+                    : interactionMode === "focus"
+                      ? "Tap a district to focus its lights."
+                      : "Tap a district to send a light ripple."}
+                </p>
+                {surprise.message && <p role="status">{surprise.message}</p>}
+                {surprise.error && <p role="alert">{surprise.error}</p>}
+              </section>
               <section
                 className="control-section"
                 data-panel="effects"
@@ -1583,12 +1589,9 @@ export function App() {
                 <ArrowCounterClockwise size={17} weight="regular" />
                 Reset defaults
               </button>
-              <button
-                className="settings-done"
-                onClick={() => setSettingsOpen(false)}
-              >
+              <ModalDismiss className="settings-done">
                 Done <Check size={16} weight="bold" />
-              </button>
+              </ModalDismiss>
             </footer>
           </Modal>
         )}
@@ -1715,17 +1718,14 @@ export function App() {
             >
               <Plus size={16} /> Add audio files
             </button>
-            <button
+            <ModalDismiss
               className="text-button"
               disabled={loading}
-              onClick={() => {
-                setMixOpen(false);
-                openYoutubeInput();
-              }}
+              onClick={openYoutubeInput}
             >
               <YoutubeLogo size={17} />{" "}
               {hasYoutube ? "Add another video" : "Add YouTube"}
-            </button>
+            </ModalDismiss>
           </div>
         </Modal>
       )}
@@ -1855,33 +1855,43 @@ export function App() {
       {help && (
         <Modal onClose={() => setHelp(false)} title="How to use Watt a Beat">
           <div className="help-content">
-            <p>
-              Add multiple audio files and YouTube URLs to play them together as
-              one mix. Open Your mix to adjust audio and YouTube volumes.
-              Shorter sources finish, then all sources restart when the longest
-              ends. Adding or removing a source pauses and restarts the mix. The
-              audio is sourced directly from YouTube when you use a video link —
-              no download or extraction. Bass, midrange, and treble light up
-              different districts. Quiet passages dim the streets; louder beats
-              bring the lights back. (YouTube uses simulated beat response.)
-            </p>
-            <p>
-              Search for a place in the Philippines, drag to pan, and scroll to
-              zoom. Use Ripple, Focus, or Power and tap a district label to play
-              with the lights. Surprise me changes your place and look; Undo
-              restores them. Hide the music and map tool panels, or compact the
-              YouTube previews, when you want more of the map. Use Map settings
-              to adjust the lights or cut power to individual districts.
-            </p>
-            <p>
-              Choose City lights, Christmas, Moonlight, or Rain in the bottom
-              bar. Export an MP4 or WebM on your device. YouTube exports are
-              silent unless you add audio files; exports include the combined
-              local soundtrack, without YouTube sound.
-            </p>
-            <p>
-              Districts group nearby streets for the lighting effect. They do
-              not represent official boundaries or live power outages.
+            <ol className="help-steps">
+              <li>
+                <strong>Find a place</strong>
+                Search a city, town, or landmark. Drag to pan, scroll to zoom.
+              </li>
+              <li>
+                <strong>Add music</strong>
+                Layer audio files and YouTube URLs in one mix. Open Your mix to
+                set volumes. Shorter sources finish first; everything restarts
+                when the longest ends. Adding or removing a source pauses and
+                restarts the mix. YouTube audio plays from YouTube. No download
+                or extraction.
+              </li>
+              <li>
+                <strong>Play with the lights</strong>
+                Bass, midrange, and treble light different districts. Quiet
+                passages dim the streets; louder beats bring them back. YouTube
+                uses a simulated beat response. In Map settings, choose Ripple,
+                Focus, or Power, then tap a district. Surprise me changes place
+                and look; Undo restores them.
+              </li>
+              <li>
+                <strong>Shape the scene</strong>
+                Hide the music panel, or compact YouTube previews, to see more
+                map. Map settings control interaction, glow, labels, and
+                district power. City lights, Christmas, Moonlight, Rain, and 3D
+                buildings live in the bottom bar.
+              </li>
+              <li>
+                <strong>Export</strong>
+                Render an MP4 or WebM on your device. YouTube-only exports are
+                silent. Local audio is included; YouTube sound is not.
+              </li>
+            </ol>
+            <p className="help-note">
+              Districts group nearby streets for the lighting effect. They are
+              not official boundaries or live power outages.
             </p>
             <p>
               Map data:{" "}
@@ -1944,21 +1954,59 @@ function HudPanel({
   header: ReactNode;
   children: ReactNode;
 }) {
+  const [expanded, setExpanded] = useState(open);
+  const [motion, setMotion] = useState<"idle" | "enter" | "leave">("idle");
+  const firstPaint = useRef(true);
+
+  useEffect(() => {
+    if (firstPaint.current) {
+      firstPaint.current = false;
+      setExpanded(open);
+      return;
+    }
+    const reduce =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (open) {
+      setExpanded(true);
+      if (reduce) {
+        setMotion("idle");
+        return;
+      }
+      setMotion("enter");
+      const timer = window.setTimeout(() => setMotion("idle"), motionMs("enter"));
+      return () => clearTimeout(timer);
+    }
+    if (reduce) {
+      setExpanded(false);
+      setMotion("idle");
+      return;
+    }
+    setMotion("leave");
+    const timer = window.setTimeout(() => {
+      setExpanded(false);
+      setMotion("idle");
+    }, motionMs("exit"));
+    return () => clearTimeout(timer);
+  }, [open]);
+
   return (
     <section
-      className={`hud-panel ${className}${open ? "" : " is-collapsed"}`}
+      className={`hud-panel ${className}${expanded ? "" : " is-collapsed"}${
+        motion === "leave" ? " is-leaving" : ""
+      }${motion === "enter" ? " is-entering" : ""}`}
       aria-label={label}
     >
       <button
         type="button"
-        className={open ? "hud-toggle" : "hud-restore"}
-        aria-expanded={open}
+        className={expanded ? "hud-toggle" : "hud-restore"}
+        aria-expanded={expanded}
         aria-controls={bodyId}
-        aria-label={open ? hideLabel : showLabel}
-        data-tooltip={open ? hideLabel : showLabel}
+        aria-label={expanded ? hideLabel : showLabel}
+        data-tooltip={expanded ? hideLabel : showLabel}
         onClick={onToggle}
       >
-        {open ? (
+        {expanded ? (
           <CaretUp size={14} aria-hidden="true" />
         ) : (
           <>
@@ -1967,13 +2015,38 @@ function HudPanel({
           </>
         )}
       </button>
-      <div className="hud-bar" hidden={!open}>
+      <div className="hud-bar" hidden={!expanded}>
         {header}
       </div>
-      <div className="hud-body" id={bodyId} hidden={!open}>
+      <div className="hud-body" id={bodyId} hidden={!expanded}>
         {children}
       </div>
     </section>
+  );
+}
+
+function FocusChip({
+  name,
+  onClear,
+  chipRef,
+}: {
+  name: string | null;
+  onClear: () => void;
+  chipRef: RefObject<HTMLButtonElement | null>;
+}) {
+  const { present, leaving } = usePresence(!!name);
+  const label = useRef(name);
+  if (name) label.current = name;
+  if (!present || !label.current) return null;
+  return (
+    <button
+      ref={chipRef}
+      className={`focus-chip${leaving ? " is-leaving" : ""}`}
+      onClick={onClear}
+    >
+      {label.current}
+      <X size={12} />
+    </button>
   );
 }
 function Toggle({
@@ -2059,6 +2132,35 @@ function ThemePicker({
     </div>
   );
 }
+const ModalCloseContext = createContext<() => void>(() => {});
+
+function ModalDismiss({
+  className,
+  children,
+  disabled,
+  onClick,
+}: {
+  className?: string;
+  children: ReactNode;
+  disabled?: boolean;
+  onClick?: () => void;
+}) {
+  const close = useContext(ModalCloseContext);
+  return (
+    <button
+      type="button"
+      className={className}
+      disabled={disabled}
+      onClick={() => {
+        onClick?.();
+        close();
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Modal({
   title,
   onClose,
@@ -2068,7 +2170,7 @@ function Modal({
 }: {
   title: string;
   onClose: () => void;
-  children: React.ReactNode;
+  children: ReactNode;
   className?: string;
   description?: string;
 }) {
@@ -2076,35 +2178,91 @@ function Modal({
   const descriptionId = useId();
   const ref = useRef<HTMLDialogElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  const closing = useRef(false);
+  const closeTimer = useRef<number>(0);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
-  useEffect(() => {
+  const requestClose = useCallback(() => {
+    if (closing.current) return;
+    const dialog = ref.current;
+    const content = contentRef.current;
+    if (!dialog) {
+      onCloseRef.current();
+      return;
+    }
+    closing.current = true;
+    dialog.classList.add("is-leaving");
+    dialog.setAttribute("inert", "");
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const finish = () => onCloseRef.current();
+    if (reduce) {
+      finish();
+      return;
+    }
+    const sheet = dialog.classList.contains("settings-modal");
+    gsap.killTweensOf([dialog, content]);
+    gsap.to(dialog, {
+      opacity: 0,
+      y: sheet ? -8 : 10,
+      scale: 0.985,
+      duration: 0.2,
+      ease: "power2.in",
+      overwrite: true,
+    });
+    if (content) {
+      gsap.to(content, {
+        opacity: 0,
+        duration: 0.18,
+        ease: "power2.in",
+        overwrite: true,
+      });
+    }
+    window.clearTimeout(closeTimer.current);
+    closeTimer.current = window.setTimeout(finish, motionMs("exit"));
+  }, []);
+
+  useLayoutEffect(() => {
     const dialog = ref.current;
     const content = contentRef.current;
     if (!dialog) return;
 
     const previousFocus = document.activeElement;
     dialog.showModal();
-
-    if (
-      content &&
-      !window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    ) {
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const sheet = dialog.classList.contains("settings-modal");
+    if (!reduce) {
       gsap.fromTo(
-        content,
-        { opacity: 0, y: 16, scale: 0.985 },
+        dialog,
+        { opacity: 0, y: sheet ? -10 : 14, scale: 0.985 },
         {
           opacity: 1,
           y: 0,
           scale: 1,
-          duration: 0.38,
+          duration: 0.32,
           ease: "power3.out",
-          delay: 0.02,
+          overwrite: true,
         },
       );
+      if (content) {
+        gsap.fromTo(
+          content,
+          { opacity: 0, y: sheet ? -4 : 8 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 0.34,
+            ease: "power3.out",
+            delay: 0.04,
+            overwrite: true,
+          },
+        );
+      }
     }
     return () => {
-      if (content) gsap.killTweensOf(content);
-      dialog.close();
+      window.clearTimeout(closeTimer.current);
+      gsap.killTweensOf([dialog, content]);
+      if (dialog.open) dialog.close();
       if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
         previousFocus.focus({ preventScroll: true });
       }
@@ -2117,32 +2275,37 @@ function Modal({
       className={`modal ${className}`}
       aria-labelledby={titleId}
       aria-describedby={description ? descriptionId : undefined}
-      onCancel={onClose}
-      onClick={(e) => {
-        if (e.target === ref.current) onClose();
+      onCancel={(event) => {
+        event.preventDefault();
+        requestClose();
+      }}
+      onClick={(event) => {
+        if (event.target === ref.current) requestClose();
       }}
     >
-      <div ref={contentRef} className="modal-content">
-        <div className="modal-heading">
-          <div>
-            <h2 id={titleId}>{title}</h2>
-            {description && (
-              <p id={descriptionId} className="settings-description">
-                {description}
-              </p>
-            )}
+      <ModalCloseContext.Provider value={requestClose}>
+        <div ref={contentRef} className="modal-content">
+          <div className="modal-heading">
+            <div>
+              <h2 id={titleId}>{title}</h2>
+              {description && (
+                <p id={descriptionId} className="settings-description">
+                  {description}
+                </p>
+              )}
+            </div>
+            <button
+              className="icon-button"
+              aria-label="Close dialog"
+              data-tooltip="Close dialog"
+              onClick={requestClose}
+            >
+              <X size={20} weight="regular" />
+            </button>
           </div>
-          <button
-            className="icon-button"
-            aria-label="Close dialog"
-            data-tooltip="Close dialog"
-            onClick={onClose}
-          >
-            <X size={20} weight="regular" />
-          </button>
+          {children}
         </div>
-        {children}
-      </div>
+      </ModalCloseContext.Provider>
     </dialog>
   );
 }

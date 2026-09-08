@@ -52,10 +52,9 @@ export function TooltipLayer() {
     document.addEventListener("pointerdown", dismiss, true);
     document.addEventListener("click", dismiss, true);
     document.addEventListener("keydown", escape, true);
-    document.addEventListener("scroll", dismiss, true);
+    document.addEventListener("wheel", dismiss, { passive: true });
     window.addEventListener("resize", dismiss);
     window.visualViewport?.addEventListener("resize", dismiss);
-    window.visualViewport?.addEventListener("scroll", dismiss);
     return () => {
       clearTimeout(timer);
       document.removeEventListener("pointerover", show);
@@ -65,10 +64,9 @@ export function TooltipLayer() {
       document.removeEventListener("pointerdown", dismiss, true);
       document.removeEventListener("click", dismiss, true);
       document.removeEventListener("keydown", escape, true);
-      document.removeEventListener("scroll", dismiss, true);
+      document.removeEventListener("wheel", dismiss);
       window.removeEventListener("resize", dismiss);
       window.visualViewport?.removeEventListener("resize", dismiss);
-      window.visualViewport?.removeEventListener("scroll", dismiss);
     };
   }, []);
 

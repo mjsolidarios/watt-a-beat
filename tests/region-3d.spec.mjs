@@ -96,7 +96,10 @@ test("raised buildings switch power by tapping their faces and lights react duri
 }) => {
   await ready(page);
   await page.getByRole("button", { name: "3D buildings", exact: true }).click();
+  await page.getByRole("button", { name: "Map settings", exact: true }).click();
   await page.getByRole("button", { name: "Power", exact: true }).click();
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   const west = page.locator('[data-region-3d="West"]');
   const roof = west.locator('[data-block-face="roof"]');
   await roof.click();
@@ -137,7 +140,10 @@ test("dense loaded districts animate and mobile controls fit the viewport", asyn
   await page.mouse.move(700, 100);
   await page.screenshot({ path: ".cache/region-3d-desktop.png" });
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "Map settings", exact: true }).click();
   await page.getByRole("button", { name: "Power", exact: true }).click();
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.screenshot({
     path: ".cache/region-3d-mobile.png",
     fullPage: true,

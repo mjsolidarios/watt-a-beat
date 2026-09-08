@@ -38,7 +38,10 @@ async function ready(page) {
   await expect(
     page.getByRole("button", { name: "Play demo", exact: true }),
   ).toBeEnabled();
+  await page.getByRole("button", { name: "Map settings", exact: true }).click();
   await page.getByRole("button", { name: "Power", exact: true }).click();
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
 }
 async function streetPoint(page) {
   return page
@@ -120,6 +123,7 @@ test.describe("touch controls", () => {
       .click();
     await page.getByRole("switch", { name: "Map labels", exact: true }).click();
     await page.getByRole("button", { name: "Done", exact: true }).click();
+    await expect(page.getByRole("dialog")).toHaveCount(0);
     const p = await streetPoint(page);
     await page.touchscreen.tap(p.x, p.y);
     await expect(

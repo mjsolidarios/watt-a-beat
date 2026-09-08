@@ -8,17 +8,15 @@
 
 @supports ((backdrop-filter: blur(6px)) or (-webkit-backdrop-filter: blur(6px))) {
   :root {
-    --glass-panel: rgb(16 26 21 / 48%);
-    --glass-dialog: rgb(20 28 23 / 68%);
+    --glass-panel: rgb(16 26 21 / 56%);
+    --glass-dialog: rgb(14 22 18 / 94%);
     --glass-blur: blur(6px) saturate(115%);
   }
 }
 
 .start-toolbar:not(.is-collapsed),
-.explore-tools:not(.is-collapsed),
 .youtube-source:not(.is-collapsed),
 .start-toolbar .hud-restore,
-.explore-tools .hud-restore,
 .location-search form,
 .location-results,
 .area-notice,
@@ -43,9 +41,14 @@
 }
 
 .modal::backdrop {
-  background: rgb(5 10 7 / 18%);
+  background: rgb(5 10 7 / 42%);
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
+  opacity: 1;
+  transition: opacity var(--dur-exit) var(--ease-in);
+}
+.modal.is-leaving::backdrop {
+  opacity: 0;
 }
 
 @media (prefers-reduced-transparency: reduce) {

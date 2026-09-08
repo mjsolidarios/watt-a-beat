@@ -12,7 +12,7 @@ import "./experience.css";
 import "./glass.css";
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <IconContext.Provider value={{ weight: "fill" }}>
+    <IconContext.Provider value={{ weight: "regular" }}>
       <App />
     </IconContext.Provider>
   </React.StrictMode>,

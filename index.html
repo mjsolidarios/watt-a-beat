@@ -87,7 +87,7 @@
         mask-repeat: no-repeat;
         -webkit-mask-position: center;
         mask-position: center;
-        animation: splash-shimmer 1.8s ease-in-out 0.55s infinite;
+        animation: splash-shimmer 1.4s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both;
       }
       .app-splash-name {
         margin: 0;
@@ -96,22 +96,7 @@
         font-weight: 600;
         letter-spacing: -0.7px;
         color: #f3ead2;
-        background: linear-gradient(
-          100deg,
-          #bba56c 12%,
-          #f3ead2 38%,
-          #fffdf4 50%,
-          #f3ead2 62%,
-          #bba56c 88%
-        );
-        background-size: 220% 100%;
-        background-position: 100% 0;
-        -webkit-background-clip: text;
-        background-clip: text;
-        -webkit-text-fill-color: transparent;
-        animation:
-          splash-name 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both,
-          splash-shimmer 1.8s ease-in-out 0.55s infinite;
+        animation: splash-name 0.85s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both;
       }
       .app-splash.is-leaving {
         opacity: 0;

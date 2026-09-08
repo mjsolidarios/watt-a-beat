@@ -80,7 +80,7 @@ async function mockYoutube(page) {
   );
 }
 
-test("music and map tool panels can be hidden, restored, and remembered", async ({
+test("music panel can be hidden, restored, and remembered", async ({
   page,
 }) => {
   await ready(page);
@@ -91,29 +91,16 @@ test("music and map tool panels can be hidden, restored, and remembered", async 
   await expect(
     page.getByRole("button", { name: "Show music panel" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Hide map tools" }).click();
-  await expect(page.getByRole("button", { name: "Surprise me" })).toHaveCount(
-    0,
-  );
-  await expect(
-    page.getByRole("button", { name: "Show map tools" }),
-  ).toBeVisible();
   await page.reload();
   await expect(
     page.getByRole("button", { name: "Show music panel" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Show map tools" }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Show music panel" }).click();
   await expect(
     page.getByRole("button", { name: "Play demo", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Show map tools" }).click();
-  await expect(page.getByRole("button", { name: "Surprise me" })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole("button", { name: "Hide music panel" }).click();
-  await page.getByRole("button", { name: "Hide map tools" }).click();
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
@@ -223,6 +210,7 @@ test("Surprise changes place and style; Undo restores visual settings and preser
   );
   await page.getByRole("button", { name: "Play demo", exact: true }).click();
   const audio = await page.locator("audio[src]").getAttribute("src");
+  await page.getByRole("button", { name: "Map settings", exact: true }).click();
   await page.getByRole("button", { name: "Surprise me" }).click();
   await expect(page.locator("svg[data-map-id]")).toHaveAttribute(
     "data-map-id",
@@ -250,7 +238,9 @@ test("Surprise changes place and style; Undo restores visual settings and preser
     }),
   );
   await page.getByRole("button", { name: "Surprise me" }).click();
-  await expect(page.getByRole("alert")).toContainText("Search unavailable");
+  await expect(page.getByRole("dialog").getByRole("alert")).toContainText(
+    "Search unavailable",
+  );
   await expect(page.locator("svg[data-map-id]")).toHaveAttribute(
     "data-map-id",
     "test-iloilo",
@@ -267,7 +257,10 @@ test("district ripple, focus and power work while paused and from keyboard", asy
   });
   await district.click();
   await expect(page.getByTestId("district-ripple")).toBeVisible();
+  await page.getByRole("button", { name: "Map settings", exact: true }).click();
   await page.getByRole("button", { name: "Power", exact: true }).click();
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   const power = page.getByRole("button", {
     name: "Toggle power in Mandurriao",
     exact: true,
@@ -281,7 +274,10 @@ test("district ripple, focus and power work while paused and from keyboard", asy
   );
   await power.press("Space");
   await expect(power).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Map settings", exact: true }).click();
   await page.getByRole("button", { name: "Focus", exact: true }).click();
+  await page.getByRole("button", { name: "Close dialog", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Focus Mandurriao", exact: true })
     .click();
