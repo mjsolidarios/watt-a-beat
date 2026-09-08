@@ -669,17 +669,21 @@
   .track-art::before {
     content: "";
     position: absolute;
-    inset: 0;
+    inset: -12%;
     z-index: 1;
     border-radius: inherit;
     background: conic-gradient(
       from 0deg,
       transparent 0deg,
-      transparent 18deg,
-      rgb(255 232 166 / 0.16) 45deg,
-      rgb(244 213 143 / 0.78) 72deg,
-      rgb(255 232 166 / 0.16) 99deg,
-      transparent 126deg,
+      transparent 28deg,
+      rgb(255 232 166 / 0.1) 52deg,
+      rgb(255 214 140 / 0.55) 68deg,
+      transparent 94deg,
+      transparent 148deg,
+      rgb(255 232 166 / 0.18) 178deg,
+      rgb(255 240 190 / 0.92) 198deg,
+      rgb(255 232 166 / 0.18) 218deg,
+      transparent 248deg,
       transparent 360deg
     );
     opacity: 0;
@@ -698,11 +702,13 @@
   }
 
   .track-art.is-playing::before {
-    opacity: 0.72;
+    opacity: 0.85;
     transform-origin: center;
-    will-change: transform;
+    will-change: transform, opacity;
     filter: blur(0.6px);
-    animation: track-art-border-beam 14s linear infinite;
+    animation:
+      track-art-border-beam 8s linear infinite,
+      track-art-beam-breathe 4s ease-in-out infinite;
   }
 
   .track-art img {
@@ -721,6 +727,23 @@
     }
     to {
       transform: rotate(360deg);
+    }
+  }
+
+  @keyframes track-art-beam-breathe {
+    0%,
+    100% {
+      opacity: 0.62;
+    }
+    50% {
+      opacity: 0.95;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .track-art.is-playing::before {
+      animation: none;
+      opacity: 0.4;
     }
   }
 
