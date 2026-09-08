@@ -95,10 +95,12 @@ export function useMapArea(
         }));
         return map;
       } catch (e) {
-        if (epoch === generation.current && !abort.signal.aborted)
-          setError(
-            e instanceof Error ? e.message : "Unable to load this area.",
-          );
+        if (epoch !== generation.current || abort.signal.aborted) return;
+        const message =
+          e instanceof Error ? e.message : "Unable to load this area.";
+        setError(message);
+        // Propagate so Surprise / callers can keep the previous scene messaging.
+        throw new Error(message);
       } finally {
         if (epoch === generation.current) {
           setBusy(false);

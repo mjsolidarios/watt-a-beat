@@ -83,6 +83,14 @@ server/
   map-service.mjs      # OSM snapshot loading & caching
 ```
 
+## Map API notes
+
+Location search issues short-lived signed tokens that `/api/maps` verifies before
+loading OpenStreetMap data. Set `MAP_SIGNING_SECRET` in production (including
+Vercel) so every serverless function shares the same key. Without it, the server
+uses a built-in fallback so tokens still verify, but you should override the
+secret for any public deployment. Optional: `OVERPASS_URL` and `GEOCODER_URL`.
+
 ## Building & Exporting
 
 ```bash

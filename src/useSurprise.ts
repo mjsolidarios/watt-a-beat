@@ -92,7 +92,19 @@ export function useSurprise(
         data.results.find(
           (r: LocationResult) => r.name.toLowerCase() === place.toLowerCase(),
         ) ?? data.results[0];
-      const map = await area.select(location);
+      let map: MapData | undefined;
+      try {
+        map = await area.select(location);
+      } catch (loadError) {
+        abort.signal.throwIfAborted();
+        const detail =
+          loadError instanceof Error && loadError.message
+            ? loadError.message
+            : "Unable to load this area.";
+        throw new Error(
+          `${detail} Your previous scene is still here. Try again.`,
+        );
+      }
       abort.signal.throwIfAborted();
       if (!map)
         throw new Error(
