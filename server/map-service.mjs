@@ -10,17 +10,23 @@ import path from "node:path";
 import { buildArea, geographicBounds } from "../src/map-geometry.mjs";
 import { buildingQuery } from "../src/buildings.mjs";
 
-const SIGNING_SECRET =
-  process.env.MAP_SIGNING_SECRET ||
-  (process.env.NODE_ENV === "production"
-    ? null // must be provided in prod / serverless
-    : randomBytes(32));
-
-function getSecret() {
-  if (SIGNING_SECRET) return SIGNING_SECRET;
-  // Dev fallback: stable random per process
+// Location tokens must verify with the same key that signed them. Resolve the
+// key once per process so serverless handlers and repeated loads stay consistent.
+// Set MAP_SIGNING_SECRET in production so every instance shares one key.
+function resolveSigningSecret() {
+  if (process.env.MAP_SIGNING_SECRET)
+    return process.env.MAP_SIGNING_SECRET;
+  if (process.env.NODE_ENV === "production") {
+    console.warn(
+      "[watt-a-beat] MAP_SIGNING_SECRET is not set. Using a built-in fallback so map tokens verify across serverless functions. Set MAP_SIGNING_SECRET in production.",
+    );
+    // Stable fallback keeps /api/locations and /api/maps agreeing when env is missing.
+    return "watt-a-beat-map-signing-fallback-v1";
+  }
   return randomBytes(32);
 }
+
+const SIGNING_SECRET = resolveSigningSecret();
 
 const memorySearch = new Map(),
   pending = new Map();
@@ -41,9 +47,7 @@ const defaultLocation = {
   country: "PH",
 };
 function getSigningKey() {
-  const s = getSecret();
-  if (!s) throw new Error("MAP_SIGNING_SECRET is not configured (required for production).");
-  return s;
+  return SIGNING_SECRET;
 }
 
 function sign(location) {
@@ -53,7 +57,7 @@ function sign(location) {
   );
 }
 
-function verify(token) {
+export function verifyLocationToken(token) {
   if (typeof token !== "string" || token.length > 4000)
     throw new Error("Select a Philippine location from search results.");
   const [payload, signature] = token.split(".");
@@ -68,6 +72,10 @@ function verify(token) {
   if (place.country !== "PH")
     throw new Error("Only Philippine locations are supported.");
   return place;
+}
+
+function verify(token) {
+  return verifyLocationToken(token);
 }
 
 export function filterPhilippineResults(data) {

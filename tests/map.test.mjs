@@ -10,6 +10,8 @@ import {
 import {
   filterPhilippineResults,
   getMapSnapshot,
+  verifyLocationToken,
+  loadMap,
 } from "../server/map-service.mjs";
 import { validateSettings } from "../server/validate.mjs";
 
@@ -88,6 +90,32 @@ test("geocoding rejects foreign countries and invalid Philippine coordinates", (
   assert.equal(results.length, 1);
   assert.equal(results[0].country, "PH");
 });
+test("map location tokens stay verifiable across repeated checks", async () => {
+  const initial = await getMapSnapshot("iloilo-default");
+  const token = initial.location.token;
+  assert.ok(token);
+  const first = verifyLocationToken(token);
+  const second = verifyLocationToken(token);
+  assert.equal(first.name, "Iloilo City");
+  assert.equal(second.name, first.name);
+  assert.equal(first.lat, initial.location.lat);
+  assert.equal(first.lon, initial.location.lon);
+  // verify() must pass before any Overpass fetch; rejection here means signing broke.
+  await assert.rejects(
+    () => loadMap("not-a-valid-token"),
+    /Select a Philippine location|search for your location again/i,
+  );
+  try {
+    await loadMap(token);
+  } catch (e) {
+    assert.doesNotMatch(
+      String(e?.message ?? e),
+      /Please search for your location again/i,
+      "valid default-map tokens must verify even when map fetch fails",
+    );
+  }
+});
+
 test("export validates the selected map zones and cannot read arbitrary files", async () => {
   const settings = {
     theme: "rain",

@@ -844,7 +844,9 @@ export function App() {
               current={scene.mapData?.name ?? ""}
               onSelect={(location) => {
                 surprise.cancel();
-                void area.select(location);
+                void area.select(location).catch(() => {
+                  /* area.error is set for the notice UI */
+                });
               }}
             />
             {(area.busy || area.error || scene.mapData?.roadCount === 0) && (
