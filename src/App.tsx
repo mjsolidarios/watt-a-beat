@@ -727,21 +727,6 @@ export function App() {
           >
             <SlidersHorizontal size={21} />
           </button>
-          <button
-            type="button"
-            className="icon-button export-trigger"
-            aria-label={exportBusy ? "Export progress" : "Export video"}
-            data-tooltip={exportBusy ? "Export progress" : "Export video"}
-            aria-haspopup="dialog"
-            aria-expanded={modal}
-            onClick={() => setModal(true)}
-          >
-            {exportBusy ? (
-              <CircleNotch size={21} className="spin" />
-            ) : (
-              <DownloadSimple size={21} />
-            )}
-          </button>
         </div>
       </header>
       <main>
@@ -1891,11 +1876,6 @@ export function App() {
                 map. Map settings control interaction, glow, labels, and
                 district power. City lights, Christmas, Moonlight, Rain, and 3D
                 buildings live in the bottom bar.
-              </li>
-              <li>
-                <strong>Export</strong>
-                Render an MP4 or WebM on your device. YouTube-only exports are
-                silent. Local audio is included; YouTube sound is not.
               </li>
             </ol>
             <p className="help-note">
