@@ -1,4 +1,4 @@
-import { loadMap } from "../../server/map-service.mjs";
+import { loadMap } from "../server/map-service.mjs";
 
 async function parseJsonBody(req) {
   if (req.body && typeof req.body === "object") {
