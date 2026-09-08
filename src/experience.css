@@ -780,13 +780,19 @@
   color: #a7b29e;
 }
 
+.youtube-source .youtube-collection {
+    margin-top: 2rem;
+}
+
 .youtube-collection .youtube-video-list {
   max-height: min(440px, calc(100dvh - 490px));
+  margin-top: 2rem;
   min-height: 220px;
   overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: #697956 #101a15;
   padding-right: 4px;
+  margin-top: 20px;
 }
 .youtube-video-card + .youtube-video-card {
   border-top: 1px solid #3c493d;
@@ -861,5 +867,3 @@
 .transport:has(.youtube-form) {
   z-index: 8;
 }
-
-
