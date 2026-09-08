@@ -98,14 +98,9 @@
         );
         background-size: 220% 100%;
         background-position: 130% 0;
-        -webkit-mask-image: url("/app-logo.svg");
-        mask-image: url("/app-logo.svg");
-        -webkit-mask-size: contain;
-        mask-size: contain;
-        -webkit-mask-repeat: no-repeat;
-        mask-repeat: no-repeat;
-        -webkit-mask-position: center;
-        mask-position: center;
+        background: url("/app-logo.svg") center / contain no-repeat;
+        border: 12px solid #0b1020;
+        box-sizing: border-box;
         animation: splash-shimmer 1.4s cubic-bezier(0.16, 1, 0.3, 1) 0.35s both;
       }
       .app-splash-name {

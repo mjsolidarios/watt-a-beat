@@ -1168,7 +1168,7 @@ export function App() {
             ref={transportRef}
           >
             <div className="track-row">
-              <div className="track-art">
+              <div className={`track-art${playing ? " is-playing" : ""}`}>
                 <img src="/app-logo.svg" alt="" aria-hidden="true" />
               </div>
               <div className="track-details">
